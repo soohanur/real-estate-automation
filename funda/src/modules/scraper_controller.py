@@ -41,6 +41,101 @@ from funda.src.modules.valuation_engine import ValuationEngine
 logger = logging.getLogger('funda.controller')
 
 
+# ─────────────────────────────────────────────────────────────────
+# Persistent run-state — lets a crashed-mid-run scrape resume from the
+# page it stopped on, reusing the ORIGINAL KVK snapshot so the crashed
+# run's own already-scraped properties aren't mis-counted as duplicates.
+# ─────────────────────────────────────────────────────────────────
+import json as _json
+_RUN_STATE_FILE = Path(config.PROJECT_ROOT) / 'funda' / 'data' / 'run_state.json'
+_RUN_STATE_MAX_AGE_SEC = 6 * 3600   # don't auto-resume crashes older than this
+_run_state_lock = threading.Lock()
+
+
+def _save_run_state(state: dict) -> None:
+    try:
+        _RUN_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with _run_state_lock:
+            _RUN_STATE_FILE.write_text(_json.dumps(state))
+    except Exception as e:
+        logger.warning(f"Could not save run_state: {e}")
+
+
+def _load_run_state() -> Optional[dict]:
+    try:
+        if not _RUN_STATE_FILE.exists():
+            return None
+        with _run_state_lock:
+            return _json.loads(_RUN_STATE_FILE.read_text())
+    except Exception as e:
+        logger.warning(f"Could not load run_state: {e}")
+        return None
+
+
+def _update_run_state_field(key: str, value) -> None:
+    st = _load_run_state()
+    if st is None:
+        return
+    st[key] = value
+    _save_run_state(st)
+
+
+def _update_run_state_page(page: int) -> None:
+    st = _load_run_state()
+    if st is None:
+        return
+    # keep the max page seen so a retry that restarts earlier doesn't lose progress
+    if page > st.get('last_page', 0):
+        st['last_page'] = page
+        _save_run_state(st)
+
+
+def _clear_run_state() -> None:
+    try:
+        if _RUN_STATE_FILE.exists():
+            _RUN_STATE_FILE.unlink()
+    except Exception:
+        pass
+
+
+def maybe_resume_run() -> bool:
+    """Called once on backend startup. If a run was in progress when the
+    backend died (in_progress=True in run_state.json) and it's recent, restart
+    that run resuming from the page it stopped on, reusing the original KVK
+    snapshot. Returns True if a resume was kicked off.
+    """
+    st = _load_run_state()
+    if not st or not st.get('in_progress'):
+        return False
+    age = time.time() - st.get('started_at', 0)
+    if age > _RUN_STATE_MAX_AGE_SEC:
+        logger.info(
+            f"Found stale run_state (age {age/3600:.1f}h > "
+            f"{_RUN_STATE_MAX_AGE_SEC/3600:.0f}h) — not auto-resuming, clearing."
+        )
+        _clear_run_state()
+        return False
+    pub_date  = st.get('publication_date', 5)
+    last_page = st.get('last_page', 1)
+    snapshot  = set(st.get('session_snapshot', []))
+    resume_page = max(1, last_page - 2)
+    logger.warning(
+        f"Detected interrupted run (pub_date={pub_date}, last_page={last_page}, "
+        f"age {age/60:.0f}min, snapshot {len(snapshot)} ids) — AUTO-RESUMING from "
+        f"page {resume_page}."
+    )
+    try:
+        start_scraper(
+            publication_date=pub_date,
+            resume_from_page=resume_page,
+            resume_snapshot=snapshot,
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Auto-resume failed: {e}")
+        return False
+
+
 def create_browser(profile_path=None, headless=False, profile_name='Default', implicit_wait=10, port=9222):
     """Factory function to create and start a browser instance."""
     browser = BrowserAutomation(
@@ -169,10 +264,20 @@ class FundaController:
         self,
         publication_date: int = 5,
         on_progress: Optional[Callable[[ScraperStats], None]] = None,
+        resume_from_page: Optional[int] = None,
+        resume_snapshot: Optional[set] = None,
     ):
         self.publication_date = publication_date
         self.on_progress = on_progress
-        
+        # Resume support (set when a crashed run is being continued):
+        #   resume_from_page  — skip binary search, start collection here
+        #   resume_snapshot   — reuse the ORIGINAL run's KVK snapshot instead of
+        #                       taking a fresh one (so the crashed run's own
+        #                       already-scraped properties are NOT counted as
+        #                       "duplicate_in_storage" — they're our own work)
+        self._resume_from_page = resume_from_page
+        self._resume_snapshot = resume_snapshot
+
         # Internal state
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
@@ -1042,6 +1147,8 @@ class FundaController:
                     collection_page=page,
                     collection_status="collecting",
                 )
+                # Persist current page so a crash can resume from here.
+                _update_run_state_page(page)
 
             def _collection_thread():
                 """Runs collection in background, streaming IDs to work_queue.
@@ -1054,16 +1161,38 @@ class FundaController:
                 Backoff doubles each attempt, capped at 10 minutes.
                 """
                 queued_ids = set()       # Shared across retries — no double-queue
-                resume_page = None       # Resume point after a crash
+                # Resume point. If this run is continuing a crashed run, start
+                # where it stopped (skip pages already collected). Otherwise
+                # None → binary search to the target window.
+                resume_page = self._resume_from_page
                 collection_attempt = 0
                 completed_naturally = False
-                # Snapshot of KVK storage at session start. Properties this
-                # session's workers add to storage will NOT count as duplicates.
-                try:
-                    prior_storage_snapshot = set(self.kvk_storage.get_all())
-                    logger.info(f"  Session-start KVK snapshot: {len(prior_storage_snapshot)} ids")
-                except Exception:
-                    prior_storage_snapshot = set()
+                # KVK snapshot. If continuing a crashed run, REUSE the original
+                # run's snapshot — so the crashed run's own already-scraped
+                # properties are NOT mis-counted as "duplicate_in_storage".
+                # Otherwise take a fresh snapshot at session start.
+                if self._resume_snapshot is not None:
+                    prior_storage_snapshot = set(self._resume_snapshot)
+                    logger.info(
+                        f"  RESUMING crashed run: reusing original snapshot "
+                        f"({len(prior_storage_snapshot)} ids), starting from page {resume_page or 1}"
+                    )
+                else:
+                    try:
+                        prior_storage_snapshot = set(self.kvk_storage.get_all())
+                        logger.info(f"  Session-start KVK snapshot: {len(prior_storage_snapshot)} ids")
+                    except Exception:
+                        prior_storage_snapshot = set()
+                # Persist run state so a crash mid-run can be resumed on restart.
+                _save_run_state({
+                    'publication_date': self.publication_date,
+                    'started_at': time.time(),
+                    'session_snapshot': sorted(prior_storage_snapshot),
+                    'last_page': resume_page or 1,
+                    'collection_status': 'collecting',
+                    'in_progress': True,
+                })
+                self._collection_snapshot = prior_storage_snapshot  # for periodic re-save
 
                 while not self._check_stop():
                     try:
@@ -1130,6 +1259,7 @@ class FundaController:
                             f"queued, {len(self.collector.collected)} total seen"
                         )
                         completed_naturally = True
+                        _update_run_state_field('collection_status', 'done')
                         break
 
                     except CaptchaBlockedException as e:
@@ -1422,6 +1552,15 @@ class FundaController:
                     self.browser.close_browser()
                 except:
                     pass
+            # Run reached its end (COMPLETED / FAILED / stopped). Mark the
+            # persisted run state as no-longer-in-progress so the next backend
+            # startup does NOT auto-resume it. (A real crash skips this finally
+            # block — uvicorn is killed — so in_progress stays True and we
+            # auto-resume on restart.)
+            try:
+                _update_run_state_field('in_progress', False)
+            except Exception:
+                pass
 
 
 # ── Global controller instance for API use ─────────────────────
@@ -1437,17 +1576,34 @@ def get_controller() -> Optional[FundaController]:
 def start_scraper(
     publication_date: int = 5,
     on_progress: Optional[Callable[[ScraperStats], None]] = None,
+    resume_from_page: Optional[int] = None,
+    resume_snapshot: Optional[set] = None,
 ) -> FundaController:
-    """Start a new scraper controller."""
+    """Start a new scraper controller.
+
+    If resume_from_page / resume_snapshot are given, this is a continuation of
+    a crashed run — collection skips the binary search and starts from that
+    page, and the supplied snapshot is reused so the crashed run's own
+    already-scraped properties aren't mis-counted as duplicates.
+
+    A fresh manual start (both None) clears any leftover run-state first.
+    """
     global _controller
-    
+
     with _controller_lock:
         if _controller and _controller.is_running():
             raise RuntimeError("Scraper is already running")
-        
+
+        if resume_from_page is None and resume_snapshot is None:
+            # Fresh manual start — discard any leftover run-state from a
+            # previous (possibly crashed) run so we don't auto-resume it later.
+            _clear_run_state()
+
         _controller = FundaController(
             publication_date=publication_date,
             on_progress=on_progress,
+            resume_from_page=resume_from_page,
+            resume_snapshot=resume_snapshot,
         )
         _controller.start()
         return _controller

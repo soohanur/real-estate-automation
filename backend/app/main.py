@@ -79,7 +79,21 @@ async def lifespan(app: FastAPI):
         logger.info(f"🌐 Access at: {settings.backend_url}")
     else:
         logger.info(f"🌐 Local access: http://{settings.HOST}:{settings.PORT}")
-    
+
+    # ── Funda: auto-resume an interrupted scrape ──────────────────
+    # If the backend died mid-run (OOM, crash, ungraceful kill), the
+    # run_state.json on disk still has in_progress=True. Resume that run
+    # from the page it stopped on, reusing the original KVK snapshot so
+    # the crashed run's own already-scraped properties aren't mis-counted
+    # as duplicates. A graceful Stop / deliberate restart clears the flag,
+    # so this only fires on a genuine crash.
+    try:
+        from funda.src.modules import maybe_resume_run
+        if maybe_resume_run():
+            logger.info("✓ Funda: auto-resumed interrupted scrape from saved state")
+    except Exception as e:
+        logger.warning(f"⚠ Funda auto-resume check failed: {e}")
+
     yield
     
     # Shutdown

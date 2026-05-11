@@ -16,6 +16,7 @@ from .scraper_controller import (
     resume_scraper,
     get_scraper_stats,
     get_controller,
+    maybe_resume_run,
 )
 
 
@@ -55,4 +56,5 @@ __all__ = [
     'resume_scraper',
     'get_scraper_stats',
     'get_controller',
+    'maybe_resume_run',
 ]
