@@ -13,7 +13,7 @@ import logging
 
 from .core.config import settings
 from .db.database import init_db, close_db
-from .api import auth, system, websocket, funda, properties
+from .api import auth, system, websocket, funda, properties, emails
 
 # Configure logging
 logging.basicConfig(
@@ -190,6 +190,7 @@ app.include_router(system.router, prefix=settings.API_PREFIX)
 app.include_router(websocket.router, prefix=settings.API_PREFIX)
 app.include_router(funda.router, prefix=settings.API_PREFIX)
 app.include_router(properties.router, prefix=settings.API_PREFIX)
+app.include_router(emails.router, prefix=settings.API_PREFIX)
 
 
 # Root endpoint

@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Mail, Paperclip, X } from "lucide-react";
 import { toast } from "sonner";
+import { emailsApi } from "@/lib/api/emails";
 import type { Property } from "@/lib/api/properties";
 
 /**
@@ -36,19 +38,31 @@ function EmailModalInner({ property, onClose }: { property: Property; onClose: (
   );
   const [attachment, setAttachment] = useState<File | null>(null);
   const [sending, setSending] = useState(false);
+  const qc = useQueryClient();
 
   async function onSend(e: React.FormEvent) {
     e.preventDefault();
     if (!to || !subject) return;
     setSending(true);
     try {
-      // Phase 3: backend /emails endpoint is added in Phase 4. Stub for now —
-      // the UI flow is in place so plumbing only needs the real send to come online.
-      await new Promise((r) => setTimeout(r, 600));
-      toast.success("Email queued (placeholder until Phase 4 send is wired).");
+      await emailsApi.create({
+        to_email: to,
+        subject,
+        body,
+        property_id: property.id,
+        property_url: property.url,
+        attachment_path: attachment ? attachment.name : undefined,
+      });
+      toast.success(
+        "Email queued. (Google Workspace send wiring lands in a follow-up; record stored in DB + Sheet.)",
+      );
+      qc.invalidateQueries({ queryKey: ["emails"] });
+      qc.invalidateQueries({ queryKey: ["properties"] });
       onClose();
-    } catch {
-      toast.error("Failed to queue email");
+    } catch (err) {
+      // @ts-expect-error axios shape
+      const msg = err?.response?.data?.detail ?? "Failed to queue email";
+      toast.error(typeof msg === "string" ? msg : "Failed to queue email");
     } finally {
       setSending(false);
     }
