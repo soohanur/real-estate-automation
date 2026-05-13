@@ -13,7 +13,6 @@ import {
   Loader2,
   Mail,
   RefreshCw,
-  Search,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -119,16 +118,10 @@ export default function DataPage() {
     <PageContainer>
       {/* Toolbar */}
       <div className="card mb-4 flex flex-wrap items-center gap-3 p-4">
-        <div className="relative min-w-[260px] flex-1">
-          <Search
-            className={cn(
-              "pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)] transition-opacity",
-              searchInput.length > 0 && "opacity-0",
-            )}
-          />
+        <div className="min-w-[260px] flex-1">
           <input
             type="text"
-            className={cn("input transition-[padding]", searchInput.length > 0 ? "pl-3" : "pl-10")}
+            className="input"
             placeholder="Search address, agency, URL, description…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}

@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Mail, Lock } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
-import { cn } from "@/lib/utils";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -60,45 +59,29 @@ export default function LoginPage() {
               <label className="mb-1.5 block text-xs font-medium text-[var(--muted-foreground)]">
                 Email or username
               </label>
-              <div className="relative">
-                <Mail
-                  className={cn(
-                    "pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)] transition-opacity",
-                    email.length > 0 && "opacity-0",
-                  )}
-                />
-                <input
-                  type="text"
-                  autoComplete="username"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className={cn("input transition-[padding]", email.length > 0 ? "pl-3" : "pl-10")}
-                  placeholder="you@example.com"
-                  required
-                />
-              </div>
+              <input
+                type="text"
+                autoComplete="username"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="input"
+                placeholder="you@example.com"
+                required
+              />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-[var(--muted-foreground)]">
                 Password
               </label>
-              <div className="relative">
-                <Lock
-                  className={cn(
-                    "pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)] transition-opacity",
-                    password.length > 0 && "opacity-0",
-                  )}
-                />
-                <input
-                  type="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className={cn("input transition-[padding]", password.length > 0 ? "pl-3" : "pl-10")}
-                  placeholder="••••••••"
-                  required
-                />
-              </div>
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="input"
+                placeholder="••••••••"
+                required
+              />
             </div>
 
             <button type="submit" disabled={submitting} className="btn-primary w-full py-2.5">

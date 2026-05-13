@@ -487,6 +487,32 @@ class SheetsWriter:
             logger.error(f"  ✗ Valuation update failed [{ws.title} row {row_num}]: {e}")
             return False
 
+    def update_bidding_price(self, url: str, bidding_price: str) -> bool:
+        """Write the human-entered Bidding Price (col I) for the row matching `url`.
+
+        Isolated from the scraper's valuation flow — this is only ever called
+        from the CRM dashboard when a user edits a property's bidding price.
+        Returns True on success, False if the URL is not present yet.
+        """
+        loc = self.find_row_by_url(url)
+        if loc is None:
+            logger.warning(f"  ✗ Bidding back-write: URL not found in any tab: {url}")
+            return False
+        ws, row_num = loc
+        try:
+            ws.batch_update(
+                [{
+                    'range': f'{self._VAL_COL_BIDDING}{row_num}',
+                    'values': [[bidding_price or '']],
+                }],
+                value_input_option='USER_ENTERED',
+            )
+            logger.info(f"  ✓ Bidding price written [{ws.title} row {row_num}]: {bidding_price}")
+            return True
+        except Exception as e:
+            logger.error(f"  ✗ Bidding price update failed [{ws.title} row {row_num}]: {e}")
+            return False
+
     def clear_all_data_rows(self) -> None:
         """Wipe every data row (row 2 onwards) on every tab — keeps headers.
         Called at the start of a fresh run so each run produces a clean sheet

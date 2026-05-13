@@ -185,22 +185,6 @@ export default function ScraperPage() {
           </div>
         </div>
 
-        {/* Progress */}
-        <div className="mt-5">
-          <div className="mb-2 flex items-end justify-between">
-            <span className="text-xs font-medium text-[var(--muted-foreground)]">Overall progress</span>
-            <span className="text-2xl font-semibold text-[var(--color-brand-600)]">
-              {status.batch_progress}%
-            </span>
-          </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--muted)]">
-            <div
-              className="h-full rounded-full bg-[var(--color-brand-600)] transition-all duration-500"
-              style={{ width: `${Math.min(100, Math.max(0, status.batch_progress))}%` }}
-            />
-          </div>
-        </div>
-
         {/* Stat grid — brand-tone only, no Total Available / Duplicate. */}
         <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <StatTile

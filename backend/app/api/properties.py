@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -202,10 +202,30 @@ async def get_property(property_id: int, db: AsyncSession = Depends(get_db)):
     return obj
 
 
+def _mirror_bidding_to_sheet(url: str, bidding_price: str) -> None:
+    """Best-effort write of the human-entered bidding price to the Google
+    Sheet (column I). Runs in BackgroundTasks so the HTTP response doesn't
+    wait on Google. Failures are logged but never raised — the DB row is the
+    source of truth."""
+    try:
+        import sys
+        from pathlib import Path
+        project_root = Path(__file__).resolve().parents[3]
+        if str(project_root) not in sys.path:
+            sys.path.insert(0, str(project_root))
+        from funda.src.modules import SheetsWriter
+        writer = SheetsWriter()
+        writer.update_bidding_price(url, bidding_price)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Bidding sheet mirror failed: {e}")
+
+
 @router.patch("/{property_id}", response_model=PropertyOut)
 async def update_property(
     property_id: int,
     patch: PropertyPatch,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
     obj = await db.get(Property, property_id)
@@ -215,10 +235,14 @@ async def update_property(
         obj.notes = patch.notes
     if patch.email_status is not None:
         obj.email_status = patch.email_status
+    bidding_changed = False
     if patch.bidding_price is not None:
+        bidding_changed = (obj.bidding_price or "") != (patch.bidding_price or "")
         obj.bidding_price = patch.bidding_price
     await db.commit()
     await db.refresh(obj)
+    if bidding_changed and obj.url:
+        background_tasks.add_task(_mirror_bidding_to_sheet, obj.url, obj.bidding_price or "")
     return obj
 
 

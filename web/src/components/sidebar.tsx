@@ -43,14 +43,11 @@ export function Sidebar({
         {/* Brand + collapse */}
         <div className="flex h-16 items-center justify-between border-b border-[var(--border)] px-3">
           {!collapsed && (
-            <Link href="/dashboard" className="flex items-center gap-2 px-1">
+            <Link href="/dashboard" className="flex items-center gap-2">
               <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-[var(--color-brand-500)] to-[var(--color-brand-700)] text-white shadow-sm">
                 <span className="text-base font-extrabold tracking-tight">F</span>
               </div>
-              <div className="leading-tight">
-                <div className="text-sm font-semibold">Funda</div>
-                <div className="text-[11px] text-[var(--muted-foreground)]">Automation</div>
-              </div>
+              <span className="text-base font-semibold leading-none">Funda</span>
             </Link>
           )}
           <button
