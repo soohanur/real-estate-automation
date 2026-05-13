@@ -69,8 +69,8 @@ export function PropertiesTable({
   order,
   onSort,
   onEmail,
-  maxHeightClass = "max-h-[calc(100vh-260px)]",
   showBiddingEdit = true,
+  className,
 }: {
   items: PropertiesTableRow[];
   isLoading?: boolean;
@@ -80,14 +80,15 @@ export function PropertiesTable({
   order?: "asc" | "desc";
   onSort?: (key: string) => void;
   onEmail?: (row: PropertiesTableRow) => void;
-  maxHeightClass?: string;
   showBiddingEdit?: boolean;
+  /** Extra classes for the outer card. Use `flex-1 min-h-0` to fill parent. */
+  className?: string;
 }) {
   void isFetching;
 
   return (
-    <div className="card overflow-hidden">
-      <div className={cn("overflow-auto", maxHeightClass)}>
+    <div className={cn("card flex min-h-0 flex-col overflow-hidden", className)}>
+      <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10 bg-[var(--surface)]">
             <tr className="border-b border-[var(--border)]">

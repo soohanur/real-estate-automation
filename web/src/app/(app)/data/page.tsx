@@ -85,8 +85,8 @@ export default function DataPage() {
   const items = data?.items ?? [];
 
   return (
-    <PageContainer>
-      <div className="card mb-4 flex flex-wrap items-center gap-3 p-4">
+    <PageContainer fill>
+      <div className="card mb-4 flex shrink-0 flex-wrap items-center gap-3 p-4">
         <div className="min-w-[260px] flex-1">
           <input
             type="text"
@@ -138,7 +138,7 @@ export default function DataPage() {
         </button>
       </div>
 
-      <div className="mb-2 flex items-center justify-between text-xs text-[var(--muted-foreground)]">
+      <div className="mb-2 flex shrink-0 items-center justify-between text-xs text-[var(--muted-foreground)]">
         <span>
           {isLoading
             ? "Loading…"
@@ -148,6 +148,7 @@ export default function DataPage() {
       </div>
 
       <PropertiesTable
+        className="flex-1"
         items={items}
         isLoading={isLoading}
         isFetching={isFetching}
