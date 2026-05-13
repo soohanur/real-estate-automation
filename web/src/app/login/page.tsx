@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Hammer, Loader2, Mail, Lock } from "lucide-react";
+import { Loader2, Mail, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
+import { cn } from "@/lib/utils";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -39,8 +40,8 @@ export default function LoginPage() {
     <div className="grid min-h-screen place-items-center bg-[var(--background)] p-4">
       <div className="w-full max-w-md">
         <div className="mb-8 flex items-center justify-center gap-3">
-          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[var(--color-brand-600)] text-white shadow-md">
-            <Hammer className="h-6 w-6" />
+          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-[var(--color-brand-500)] to-[var(--color-brand-700)] text-white shadow-md">
+            <span className="text-xl font-extrabold tracking-tight">F</span>
           </div>
           <div className="text-left">
             <div className="text-lg font-semibold">Funda Automation</div>
@@ -60,13 +61,18 @@ export default function LoginPage() {
                 Email or username
               </label>
               <div className="relative">
-                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
+                <Mail
+                  className={cn(
+                    "pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)] transition-opacity",
+                    email.length > 0 && "opacity-0",
+                  )}
+                />
                 <input
                   type="text"
                   autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="input pl-10"
+                  className={cn("input transition-[padding]", email.length > 0 ? "pl-3" : "pl-10")}
                   placeholder="you@example.com"
                   required
                 />
@@ -77,13 +83,18 @@ export default function LoginPage() {
                 Password
               </label>
               <div className="relative">
-                <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
+                <Lock
+                  className={cn(
+                    "pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)] transition-opacity",
+                    password.length > 0 && "opacity-0",
+                  )}
+                />
                 <input
                   type="password"
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="input pl-10"
+                  className={cn("input transition-[padding]", password.length > 0 ? "pl-3" : "pl-10")}
                   placeholder="••••••••"
                   required
                 />

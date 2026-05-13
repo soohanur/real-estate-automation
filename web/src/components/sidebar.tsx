@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
-  Hammer,
+  Menu,
   Building2,
   Database,
   Mail,
@@ -44,8 +44,8 @@ export function Sidebar({
         <div className="flex h-16 items-center justify-between border-b border-[var(--border)] px-3">
           {!collapsed && (
             <Link href="/dashboard" className="flex items-center gap-2 px-1">
-              <div className="grid h-9 w-9 place-items-center rounded-xl bg-[var(--color-brand-600)] text-white shadow-sm">
-                <Hammer className="h-5 w-5" />
+              <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-[var(--color-brand-500)] to-[var(--color-brand-700)] text-white shadow-sm">
+                <span className="text-base font-extrabold tracking-tight">F</span>
               </div>
               <div className="leading-tight">
                 <div className="text-sm font-semibold">Funda</div>
@@ -57,12 +57,9 @@ export function Sidebar({
             type="button"
             onClick={onToggle}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className={cn(
-              "grid h-9 w-9 place-items-center rounded-xl text-[var(--muted-foreground)] hover:bg-[var(--muted)] transition-transform",
-              collapsed && "rotate-180"
-            )}
+            className="grid h-9 w-9 place-items-center rounded-xl text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
           >
-            <Hammer className="h-5 w-5" />
+            <Menu className="h-5 w-5" />
           </button>
         </div>
 

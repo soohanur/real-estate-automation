@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDown,
   ArrowUp,
+  Check,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
@@ -34,15 +35,21 @@ const DAY_OPTIONS = [
   { label: "Last 90 days", value: 90 },
 ];
 
+// Spec: status filter has exactly three options.
+const STATUS_OPTIONS = [
+  { label: "All status", value: "" },
+  { label: "Sent email", value: "sent" },
+  { label: "Not sent email", value: "not_sent" },
+];
+
 const COLUMNS: Array<{ key: keyof Property; label: string; sortable?: boolean; width?: string }> = [
   { key: "scrape_date", label: "Scrape Date", sortable: true, width: "120px" },
   { key: "address", label: "Address", sortable: true, width: "260px" },
   { key: "asking_price", label: "Asking", sortable: true, width: "110px" },
   { key: "woz_value", label: "WOZ", sortable: true, width: "110px" },
   { key: "suggested_bid", label: "Suggested", sortable: true, width: "120px" },
-  { key: "bidding_price", label: "Bidding", width: "110px" },
+  { key: "bidding_price", label: "Bidding (edit)", width: "150px" },
   { key: "days_on_market", label: "DOM", sortable: true, width: "70px" },
-  { key: "property_type", label: "Type", sortable: true, width: "160px" },
   { key: "energy_label", label: "Energy", sortable: true, width: "80px" },
   { key: "living_area", label: "m²", width: "70px" },
   { key: "rooms", label: "Rooms", width: "70px" },
@@ -62,18 +69,24 @@ export default function DataPage() {
   const [searchInput, setSearchInput] = useState("");
   const [emailProperty, setEmailProperty] = useState<Property | null>(null);
 
-  // Filter options.
-  const { data: filterOpts } = useQuery({
-    queryKey: ["properties", "filters"],
-    queryFn: propertiesApi.filters,
-    staleTime: 60_000,
-  });
+  // Debounced search → params.q.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setParams((p) => {
+        if ((p.q ?? "") === (searchInput || "")) return p;
+        return { ...p, q: searchInput || undefined, offset: 0 };
+      });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
-  // List.
+  // List — auto-poll for live sync.
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ["properties", "list", params],
     queryFn: () => propertiesApi.list(params),
     placeholderData: (prev) => prev,
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
   });
 
   // Sync mutation.
@@ -98,11 +111,6 @@ export default function DataPage() {
     });
   };
 
-  const onSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setParams((p) => ({ ...p, q: searchInput || undefined, offset: 0 }));
-  };
-
   const items = data?.items ?? [];
   const showingFrom = items.length > 0 ? (params.offset ?? 0) + 1 : 0;
   const showingTo = (params.offset ?? 0) + items.length;
@@ -111,16 +119,21 @@ export default function DataPage() {
     <PageContainer>
       {/* Toolbar */}
       <div className="card mb-4 flex flex-wrap items-center gap-3 p-4">
-        <form onSubmit={onSearch} className="relative min-w-[260px] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
+        <div className="relative min-w-[260px] flex-1">
+          <Search
+            className={cn(
+              "pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)] transition-opacity",
+              searchInput.length > 0 && "opacity-0",
+            )}
+          />
           <input
             type="text"
-            className="input pl-10"
+            className={cn("input transition-[padding]", searchInput.length > 0 ? "pl-3" : "pl-10")}
             placeholder="Search address, agency, URL, description…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
           />
-        </form>
+        </div>
 
         <select
           className="input max-w-[180px]"
@@ -138,46 +151,15 @@ export default function DataPage() {
         </select>
 
         <select
-          className="input max-w-[180px]"
-          value={params.property_type ?? ""}
-          onChange={(e) =>
-            setParams((p) => ({ ...p, property_type: e.target.value || undefined, offset: 0 }))
-          }
-        >
-          <option value="">All types</option>
-          {(filterOpts?.property_type ?? []).map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-
-        <select
-          className="input max-w-[140px]"
-          value={params.energy_label ?? ""}
-          onChange={(e) =>
-            setParams((p) => ({ ...p, energy_label: e.target.value || undefined, offset: 0 }))
-          }
-        >
-          <option value="">All energy</option>
-          {(filterOpts?.energy_label ?? []).map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-
-        <select
           className="input max-w-[160px]"
           value={params.email_status ?? ""}
           onChange={(e) =>
             setParams((p) => ({ ...p, email_status: e.target.value || undefined, offset: 0 }))
           }
         >
-          <option value="">All status</option>
-          {(filterOpts?.email_status ?? ["not_sent", "sent", "failed"]).map((t) => (
-            <option key={t} value={t}>
-              {t}
+          {STATUS_OPTIONS.map((o) => (
+            <option key={o.value || "all"} value={o.value}>
+              {o.label}
             </option>
           ))}
         </select>
@@ -260,7 +242,11 @@ export default function DataPage() {
                 >
                   {COLUMNS.map((c) => (
                     <td key={c.key as string} className="px-3 py-2.5">
-                      {renderCell(p, c.key)}
+                      {c.key === "bidding_price" ? (
+                        <BiddingCell property={p} />
+                      ) : (
+                        renderCell(p, c.key)
+                      )}
                     </td>
                   ))}
                   <td className="sticky right-0 bg-[var(--surface)] px-3 py-2.5 text-right">
@@ -331,6 +317,71 @@ export default function DataPage() {
   );
 }
 
+/**
+ * Inline editable bidding-price cell. Saves to backend on Enter or blur,
+ * with a small Check button so user sees the explicit save action.
+ */
+function BiddingCell({ property }: { property: Property }) {
+  const qc = useQueryClient();
+  const [value, setValue] = useState<string>(property.bidding_price ?? "");
+  const [original, setOriginal] = useState<string>(property.bidding_price ?? "");
+
+  // Sync if backend value changes (e.g. another tab edited it). setState in
+  // effect here is the documented React 19 sync-from-prop pattern.
+  useEffect(() => {
+    const v = property.bidding_price ?? "";
+    if (v !== original) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setOriginal(v);
+      setValue(v);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [property.bidding_price]);
+
+  const saveM = useMutation({
+    mutationFn: (v: string) => propertiesApi.update(property.id, { bidding_price: v }),
+    onSuccess: (updated) => {
+      setOriginal(updated.bidding_price ?? "");
+      qc.invalidateQueries({ queryKey: ["properties"] });
+      toast.success("Bidding price saved");
+    },
+    onError: () => toast.error("Save failed"),
+  });
+
+  const dirty = value !== original;
+
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        type="text"
+        inputMode="numeric"
+        className="input h-8 w-full px-2 py-1 text-sm"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            if (dirty) saveM.mutate(value);
+          }
+          if (e.key === "Escape") setValue(original);
+        }}
+        placeholder="€ —"
+      />
+      {dirty && (
+        <button
+          type="button"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--color-brand-600)] text-white hover:bg-[var(--color-brand-700)]"
+          onClick={() => saveM.mutate(value)}
+          disabled={saveM.isPending}
+          title="Save"
+        >
+          {saveM.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function renderCell(p: Property, key: keyof Property) {
   const v = p[key];
   if (v === null || v === undefined || v === "") return <span className="text-[var(--muted-foreground)]">—</span>;
@@ -353,6 +404,8 @@ function StatusChip({ status }: { status: string }) {
       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
       : status === "failed"
       ? "bg-rose-50 text-rose-700 border-rose-200"
+      : status === "queued"
+      ? "bg-amber-50 text-amber-700 border-amber-200"
       : "bg-[var(--muted)] text-[var(--muted-foreground)] border-[var(--border)]";
   return (
     <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium", tone)}>

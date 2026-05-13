@@ -82,7 +82,7 @@ export const propertiesApi = {
     const r = await api.get<Property>(`/properties/${id}`);
     return r.data;
   },
-  async update(id: number, patch: { notes?: string; email_status?: string }): Promise<Property> {
+  async update(id: number, patch: { notes?: string; email_status?: string; bidding_price?: string }): Promise<Property> {
     const r = await api.patch<Property>(`/properties/${id}`, patch);
     return r.data;
   },

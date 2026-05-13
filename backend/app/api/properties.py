@@ -80,6 +80,7 @@ class PropertyList(BaseModel):
 class PropertyPatch(BaseModel):
     notes: Optional[str] = None
     email_status: Optional[str] = None
+    bidding_price: Optional[str] = None
 
 
 class SyncResponse(BaseModel):
@@ -214,6 +215,8 @@ async def update_property(
         obj.notes = patch.notes
     if patch.email_status is not None:
         obj.email_status = patch.email_status
+    if patch.bidding_price is not None:
+        obj.bidding_price = patch.bidding_price
     await db.commit()
     await db.refresh(obj)
     return obj

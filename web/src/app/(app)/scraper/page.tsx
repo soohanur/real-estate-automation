@@ -12,7 +12,6 @@ import {
   Filter as FilterIcon,
   CheckCircle2,
   FileSpreadsheet,
-  Database as DbIcon,
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -202,34 +201,20 @@ export default function ScraperPage() {
           </div>
         </div>
 
-        {/* Stat grid */}
-        <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-5">
-          <StatTile
-            label="Total Available"
-            value={status.total_search_results > 0 ? formatNumber(status.total_search_results) : "—"}
-            sub={status.collection_status === "collecting" ? "collecting…" : "on funda"}
-            tone="neutral"
-            icon={<DbIcon className="h-4 w-4" />}
-          />
+        {/* Stat grid — brand-tone only, no Total Available / Duplicate. */}
+        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <StatTile
             label="Collected"
             value={status.ids_queued > 0 ? formatNumber(status.ids_queued) : "—"}
             sub="new properties"
-            tone="indigo"
+            tone="brand-soft"
             icon={<Users className="h-4 w-4" />}
-          />
-          <StatTile
-            label="Duplicate"
-            value={formatNumber(status.duplicate_in_storage)}
-            sub="already in storage"
-            tone="orange"
-            icon={<AlertCircle className="h-4 w-4" />}
           />
           <StatTile
             label="Filtered"
             value={formatNumber(status.properties_filtered)}
             sub="by price"
-            tone="amber"
+            tone="brand-soft"
             icon={<FilterIcon className="h-4 w-4" />}
           />
           <StatTile
@@ -422,18 +407,14 @@ function StatTile({
   label: string;
   value: string;
   sub?: string;
-  tone: "brand" | "indigo" | "orange" | "amber" | "neutral";
+  tone: "brand" | "brand-soft" | "neutral";
   icon?: React.ReactNode;
 }) {
   const toneClass =
     tone === "brand"
-      ? "bg-[var(--color-brand-50)] text-[var(--color-brand-700)]"
-      : tone === "indigo"
-      ? "bg-indigo-50 text-indigo-700"
-      : tone === "orange"
-      ? "bg-orange-50 text-orange-700"
-      : tone === "amber"
-      ? "bg-amber-50 text-amber-700"
+      ? "bg-[var(--color-brand-600)] text-white"
+      : tone === "brand-soft"
+      ? "bg-[var(--color-brand-50)] text-[var(--color-brand-700)] dark:bg-[var(--color-brand-900)]/30 dark:text-[var(--color-brand-300)]"
       : "bg-[var(--surface-2)] text-[var(--foreground)]";
 
   return (
