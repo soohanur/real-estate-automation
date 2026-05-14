@@ -297,8 +297,7 @@ export default function ScraperPage() {
         <div className="card p-6 lg:col-span-1">
           <h3 className="text-sm font-semibold">Storage & Export</h3>
           <div className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-4">
-            <div className="text-xs text-[var(--muted-foreground)]">Permanent KVK storage</div>
-            <div className="mt-1 flex items-baseline justify-between">
+            <div className="flex items-baseline justify-between">
               <span className="text-2xl font-semibold">{formatNumber(status.total_kvk_stored)}</span>
               {status.total_kvk_stored > 0 && (
                 <button
@@ -329,11 +328,6 @@ export default function ScraperPage() {
             </a>
           )}
 
-          <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-            <MiniStat label="Scraped" value={status.properties_scraped} />
-            <MiniStat label="Failed" value={status.properties_failed} />
-            <MiniStat label="Restarts" value={status.browser_restarts} />
-          </div>
         </div>
       </div>
 
@@ -409,15 +403,6 @@ function StatTile({
       </div>
       <div className="mt-2 text-2xl font-semibold tabular-nums">{value}</div>
       {sub && <div className="mt-0.5 text-[11px] opacity-70">{sub}</div>}
-    </div>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl border border-[var(--border)] p-3">
-      <div className="text-[10px] uppercase tracking-wider text-[var(--muted-foreground)]">{label}</div>
-      <div className="mt-0.5 text-sm font-semibold">{formatNumber(value)}</div>
     </div>
   );
 }
