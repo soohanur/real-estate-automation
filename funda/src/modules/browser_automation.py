@@ -314,15 +314,39 @@ class BrowserAutomation:
     # ─── Navigation ───────────────────────────────────────────
 
     def navigate_to(self, url: str) -> None:
-        """Navigate to a URL and re-inject stealth scripts."""
+        """Navigate to a URL and re-inject stealth scripts.
+
+        Up to 3 attempts on transient navigation errors (DNS blip,
+        connection reset, browser pipe broken). 2s/4s backoff between
+        retries. Captcha detection is NOT considered a retry trigger —
+        the higher-level captcha handler owns that flow.
+        """
+        import time as _t
         logger.info(f"Navigating to: {url}")
-        self.page.get(url)
-        # Re-inject stealth after each navigation
-        self._inject_stealth_scripts()
-        # Check for CAPTCHA and auto-backoff
-        if self.is_captcha_page():
-            self._delay_multiplier = min(self._delay_multiplier * 1.5, 4.0)
-            logger.warning(f"CAPTCHA detected — delay multiplier increased to {self._delay_multiplier:.1f}x")
+        last_exc = None
+        for attempt in (1, 2, 3):
+            try:
+                self.page.get(url)
+                self._inject_stealth_scripts()
+                if self.is_captcha_page():
+                    self._delay_multiplier = min(self._delay_multiplier * 1.5, 4.0)
+                    logger.warning(
+                        f"CAPTCHA detected — delay multiplier increased to "
+                        f"{self._delay_multiplier:.1f}x"
+                    )
+                return
+            except Exception as e:
+                last_exc = e
+                if attempt < 3:
+                    sleep_s = 2 * attempt
+                    logger.warning(
+                        f"navigate_to failed (attempt {attempt}/3): {e} — "
+                        f"retrying in {sleep_s}s"
+                    )
+                    _t.sleep(sleep_s)
+                    continue
+                logger.error(f"navigate_to failed permanently: {e}")
+                raise
 
     def get_current_url(self) -> str:
         return self.page.url

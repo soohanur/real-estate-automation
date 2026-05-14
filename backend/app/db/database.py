@@ -13,7 +13,10 @@ engine = create_async_engine(
     future=True,
     pool_pre_ping=True,
     pool_size=20,  # Increased for multiple workers
-    max_overflow=40  # Increased for peak load
+    max_overflow=40,  # Increased for peak load
+    # Recycle conns idle longer than 30min so we never hand out a stale
+    # connection that PG (or a load balancer) has already closed.
+    pool_recycle=1800,
 )
 
 # Create session factory

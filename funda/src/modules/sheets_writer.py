@@ -347,26 +347,47 @@ class SheetsWriter:
         controller treat the property as 'written' so it gets added to KVK
         storage, closing the loop that previously could leave a stale dup.
 
-        Retry policy: transient gspread errors (token expiry, network blip,
-        AttributeError from a half-connected client) trigger one
-        force_reconnect + retry. Persistent failures return False.
+        Retry policy:
+          - Google API quota errors (429 / RESOURCE_EXHAUSTED): up to 4
+            attempts with exponential backoff (5s, 15s, 45s) so long runs
+            survive the 60-write/min/project cap.
+          - Other transient errors (token expiry, network blip,
+            half-connected client): force_reconnect + retry once.
         """
+        import time as _time
+        attempts = 4
+        backoff = [0, 5, 15, 45]  # seconds before attempts 1..4
+
         last_exc: Optional[Exception] = None
-        for attempt in (1, 2):
+        for attempt in range(1, attempts + 1):
+            if backoff[attempt - 1] > 0:
+                _time.sleep(backoff[attempt - 1])
             try:
                 return self._write_property_once(prop, publication_date)
             except Exception as e:
                 last_exc = e
-                if attempt == 1:
+                msg = str(e).lower()
+                is_quota = (
+                    '429' in msg
+                    or 'quota' in msg
+                    or 'rate' in msg
+                    or 'resource_exhausted' in msg
+                )
+                if is_quota and attempt < attempts:
                     logger.warning(
-                        f"  Sheets write transient error (attempt 1) — "
+                        f"  Sheets quota hit (attempt {attempt}/{attempts}) — "
+                        f"backing off {backoff[attempt]}s: {e}"
+                    )
+                    continue
+                if attempt < attempts:
+                    logger.warning(
+                        f"  Sheets write transient error (attempt {attempt}/{attempts}) — "
                         f"forcing reconnect: {e}"
                     )
                     self._force_reconnect()
                     continue
-                logger.error(f"  ✗ Sheets write failed after retry: {e}")
+                logger.error(f"  ✗ Sheets write failed after {attempt} attempts: {e}")
                 return False
-        # unreachable
         return False
 
     def _write_property_once(self, prop: dict, publication_date: int) -> bool:
@@ -530,19 +551,20 @@ class SheetsWriter:
             )
             return False
         ws, row_num = loc
-        try:
-            ws.batch_update([{
+        ok = self._batch_update_with_backoff(
+            ws,
+            [{
                 'range':  f'{self._VAL_COL_WOZ}{row_num}:{self._VAL_COL_SUGGESTED}{row_num}',
                 'values': [[
                     valuation.get('woz_value', '')      or '',
                     valuation.get('suggested_bid', '')  or '',
                 ]],
-            }], value_input_option='USER_ENTERED')
+            }],
+            label=f"Valuation [{ws.title} row {row_num}]",
+        )
+        if ok:
             logger.info(f"  ✓ Valuation written [{ws.title} row {row_num}]: {url}")
-            return True
-        except Exception as e:
-            logger.error(f"  ✗ Valuation update failed [{ws.title} row {row_num}]: {e}")
-            return False
+        return ok
 
     def update_bidding_price(self, url: str, bidding_price: str) -> bool:
         """Write the human-entered Bidding Price (col I) for the row matching `url`.
@@ -556,19 +578,53 @@ class SheetsWriter:
             logger.warning(f"  ✗ Bidding back-write: URL not found in any tab: {url}")
             return False
         ws, row_num = loc
-        try:
-            ws.batch_update(
-                [{
-                    'range': f'{self._VAL_COL_BIDDING}{row_num}',
-                    'values': [[bidding_price or '']],
-                }],
-                value_input_option='USER_ENTERED',
-            )
+        ok = self._batch_update_with_backoff(
+            ws,
+            [{
+                'range': f'{self._VAL_COL_BIDDING}{row_num}',
+                'values': [[bidding_price or '']],
+            }],
+            label=f"Bidding [{ws.title} row {row_num}]",
+        )
+        if ok:
             logger.info(f"  ✓ Bidding price written [{ws.title} row {row_num}]: {bidding_price}")
-            return True
-        except Exception as e:
-            logger.error(f"  ✗ Bidding price update failed [{ws.title} row {row_num}]: {e}")
-            return False
+        return ok
+
+    def _batch_update_with_backoff(self, ws, requests: list, label: str) -> bool:
+        """Run ws.batch_update with the same retry / backoff policy as
+        write_property: 4 attempts with 0/5/15/45s sleeps; on quota errors
+        we wait, on other transient errors we force-reconnect and retry.
+        """
+        import time as _time
+        backoff = [0, 5, 15, 45]
+        for attempt in range(1, len(backoff) + 1):
+            if backoff[attempt - 1] > 0:
+                _time.sleep(backoff[attempt - 1])
+            try:
+                ws.batch_update(requests, value_input_option='USER_ENTERED')
+                return True
+            except Exception as e:
+                msg = str(e).lower()
+                is_quota = (
+                    '429' in msg
+                    or 'quota' in msg
+                    or 'rate' in msg
+                    or 'resource_exhausted' in msg
+                )
+                if is_quota and attempt < len(backoff):
+                    logger.warning(
+                        f"  {label}: quota hit (attempt {attempt}) — backing off {backoff[attempt]}s"
+                    )
+                    continue
+                if attempt < len(backoff):
+                    logger.warning(
+                        f"  {label}: transient error (attempt {attempt}) — forcing reconnect: {e}"
+                    )
+                    self._force_reconnect()
+                    continue
+                logger.error(f"  ✗ {label} failed after {attempt} attempts: {e}")
+                return False
+        return False
 
     def clear_all_data_rows(self) -> None:
         """Wipe every data row (row 2 onwards) on every tab — keeps headers.

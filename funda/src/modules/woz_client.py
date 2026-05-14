@@ -32,13 +32,22 @@ def _normalise_postcode(pc: str) -> str:
 
 
 def _http_json(url: str) -> Optional[dict]:
-    try:
-        req = urllib.request.Request(url, headers=HEADERS)
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-            return json.loads(r.read().decode())
-    except Exception as e:
-        logger.debug(f"WOZ HTTP fail {url}: {e}")
-        return None
+    """GET url, parse JSON. Up to 2 attempts (1s sleep between) so a single
+    transient blip on PDOK/Kadaster doesn't drop a property's WOZ value."""
+    import time
+    for attempt in (1, 2):
+        try:
+            req = urllib.request.Request(url, headers=HEADERS)
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+                return json.loads(r.read().decode())
+        except Exception as e:
+            if attempt == 1:
+                logger.debug(f"WOZ HTTP retry 1/2 {url}: {e}")
+                time.sleep(1.0)
+                continue
+            logger.debug(f"WOZ HTTP fail (final) {url}: {e}")
+            return None
+    return None
 
 
 def _find_nummeraanduiding(postcode: str, house_number: str,
