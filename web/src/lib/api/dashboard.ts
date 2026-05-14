@@ -1,25 +1,9 @@
 import { api } from "../api";
+import type { Property } from "./properties";
 
-export type LatestProperty = {
-  id: number;
-  url: string;
-  address?: string | null;
-  asking_price?: string | null;
-  suggested_bid?: string | null;
-  property_type?: string | null;
-  energy_label?: string | null;
-  agency_name?: string | null;
-  agency_email?: string | null;
-  woz_value?: string | null;
-  bidding_price?: string | null;
-  days_on_market?: string | null;
-  living_area?: string | null;
-  rooms?: string | null;
-  sheet_tab?: string | null;
-  email_status?: string | null;
-  scrape_date?: string | null;
-  created_at?: string | null;
-};
+// LatestProperty mirrors PropertyOut on the backend (full sheet schema)
+// so the dashboard's Latest Scrapes table matches Global Data exactly.
+export type LatestProperty = Property;
 
 export type DashboardStats = {
   total_scraped: number;

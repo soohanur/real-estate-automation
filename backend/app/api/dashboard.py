@@ -17,32 +17,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.database import get_db
 from ..db.models import EmailMessage, Property
+# Reuse the canonical PropertyOut so dashboard's latest_scrapes carries
+# every column the Global Data table renders — no field drift.
+from .properties import PropertyOut
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
-
-
-class LatestProperty(BaseModel):
-    id: int
-    url: str
-    address: Optional[str] = None
-    asking_price: Optional[str] = None
-    suggested_bid: Optional[str] = None
-    property_type: Optional[str] = None
-    energy_label: Optional[str] = None
-    agency_name: Optional[str] = None
-    agency_email: Optional[str] = None
-    woz_value: Optional[str] = None
-    bidding_price: Optional[str] = None
-    days_on_market: Optional[str] = None
-    living_area: Optional[str] = None
-    rooms: Optional[str] = None
-    sheet_tab: Optional[str] = None
-    email_status: Optional[str] = None
-    scrape_date: Optional[str] = None
-    created_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
 
 
 class DashboardStats(BaseModel):
@@ -54,7 +33,7 @@ class DashboardStats(BaseModel):
     emails_queued: int
     emails_failed: int
     not_emailed: int
-    latest_scrapes: List[LatestProperty]
+    latest_scrapes: List[PropertyOut]
 
 
 @router.get("/stats", response_model=DashboardStats)
@@ -109,5 +88,5 @@ async def get_dashboard_stats(
         emails_queued=emails_queued,
         emails_failed=emails_failed,
         not_emailed=not_emailed,
-        latest_scrapes=[LatestProperty.model_validate(p) for p in latest],
+        latest_scrapes=[PropertyOut.model_validate(p) for p in latest],
     )
