@@ -22,11 +22,12 @@ Date header structure on funda (sort=date_up):
   A single search page can have MULTIPLE date headers when properties
   span two days (transition pages).
 """
+import json
 import re
 import time
 import random
 import urllib.parse
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import List, Optional, Tuple
 from ..utils.logger import setup_logger
 
@@ -527,23 +528,117 @@ class PropertyCollector:
 
         return self._extract_first_date_header()
 
+    # --- NUXT JSON listing extraction (Funda 2026 DOM rewrite) ----
+    # Funda removed the legacy `font-semibold mb-4` date headers and the
+    # in-card date strings. The page now ships a flat-array JSON blob in a
+    # `<script id="__NUXT_DATA__">` tag holding the full search state. Each
+    # listing has `publish_date`, `id`, `object_detail_page_relative_url`,
+    # and an `address` ref. We parse that blob instead of scraping markup.
+
+    @staticmethod
+    def _resolve_nuxt_ref(arr, ref):
+        """Nuxt's flat-array format stores values by index. Helper resolves
+        an int index into the actual value (one hop). Non-int returned as-is."""
+        if isinstance(ref, int):
+            try:
+                return arr[ref]
+            except (IndexError, TypeError):
+                return None
+        return ref
+
+    def _extract_listings_from_nuxt(self, html: str) -> List[dict]:
+        """Parse search-page NUXT_DATA blob into a list of listings.
+
+        Returns list of dicts with keys: id, url, address, publish_date (date).
+        Empty list on parse failure or when the blob has no listings.
+        """
+        m = re.search(
+            r'<script[^>]*id="__NUXT_DATA__"[^>]*>(.+?)</script>',
+            html,
+            re.S,
+        )
+        if not m:
+            return []
+        try:
+            arr = json.loads(m.group(1))
+        except Exception as e:
+            logger.debug(f"  NUXT_DATA JSON parse failed: {e}")
+            return []
+
+        results: List[dict] = []
+        seen_ids: set = set()
+        for entry in arr:
+            if not isinstance(entry, dict):
+                continue
+            url_ref = entry.get('object_detail_page_relative_url')
+            id_ref = entry.get('id')
+            pd_ref = entry.get('publish_date')
+            addr_ref = entry.get('address')
+            if url_ref is None or id_ref is None or pd_ref is None:
+                continue
+
+            url_v = self._resolve_nuxt_ref(arr, url_ref)
+            id_v = self._resolve_nuxt_ref(arr, id_ref)
+            pd_v = self._resolve_nuxt_ref(arr, pd_ref)
+
+            if not isinstance(url_v, str) or '/detail/koop/' not in url_v:
+                continue
+            funda_id = str(id_v) if id_v is not None else None
+            if not funda_id or funda_id in seen_ids:
+                continue
+
+            # Parse ISO publish_date (e.g. '2026-05-14T09:18:44.7889744+02:00')
+            publish_date: Optional[date] = None
+            if isinstance(pd_v, str):
+                try:
+                    # Trim sub-second precision Python <3.11 can't handle (>6 digits)
+                    iso = re.sub(r'(\.\d{6})\d+', r'\1', pd_v)
+                    publish_date = datetime.fromisoformat(iso).date()
+                except Exception:
+                    pass
+
+            address_str = ''
+            if isinstance(addr_ref, int):
+                addr = self._resolve_nuxt_ref(arr, addr_ref)
+                if isinstance(addr, dict):
+                    street = self._resolve_nuxt_ref(arr, addr.get('street_name')) or ''
+                    hn = self._resolve_nuxt_ref(arr, addr.get('house_number')) or ''
+                    pc = self._resolve_nuxt_ref(arr, addr.get('postal_code')) or ''
+                    city = self._resolve_nuxt_ref(arr, addr.get('city')) or ''
+                    parts = []
+                    if street or hn:
+                        parts.append(f"{street} {hn}".strip())
+                    if pc or city:
+                        parts.append(f"{pc} {city}".strip())
+                    address_str = ', '.join(p for p in parts if p)
+
+            seen_ids.add(funda_id)
+            results.append({
+                'id': funda_id,
+                'url': url_v,
+                'address': address_str,
+                'publish_date': publish_date,
+            })
+        return results
+
     def _extract_first_date_header(self) -> Optional[date]:
-        """Extract the first date header from the current page."""
+        """Return publish_date of the first listing on the current page (NUXT)."""
         try:
             html = self.browser.get_page_source()
-            headers = re.findall(r'font-semibold mb-4">([^<]+)<', html)
-            if headers:
-                return _parse_dutch_date(headers[0])
+            listings = self._extract_listings_from_nuxt(html)
+            for lst in listings:
+                if lst.get('publish_date'):
+                    return lst['publish_date']
         except Exception as e:
-            logger.debug(f"  Error extracting date header: {e}")
+            logger.debug(f"  Error extracting first publish_date: {e}")
         return None
 
     # --- Extract properties with date awareness -------------------
 
     def _extract_properties_with_dates(self) -> Tuple[Optional[date], int, str]:
         """
-        Extract properties from current page, associating each with its
-        listing date from the date headers.
+        Extract properties from current page (NUXT_DATA blob), associating
+        each with its publish_date.
 
         Returns:
             (page_first_date, new_count, status)
@@ -554,87 +649,58 @@ class PropertyCollector:
         except Exception:
             return (None, 0, 'empty')
 
-        # Find all date headers and their positions
-        date_headers = [
-            (m.start(), _parse_dutch_date(m.group(1)), m.group(1))
-            for m in re.finditer(r'font-semibold mb-4">([^<]+)<', html)
-        ]
-
-        # Find all property links and their positions
-        link_matches = list(re.finditer(r'href="(/detail/koop/[^"]+)"', html))
-
-        if not link_matches:
+        listings = self._extract_listings_from_nuxt(html)
+        if not listings:
             return (None, 0, 'empty')
 
-        # Deduplicate links (each appears twice in HTML)
-        seen_hrefs = set()
-        unique_links = []
-        for m in link_matches:
-            href = m.group(1)
-            if href not in seen_hrefs:
-                seen_hrefs.add(href)
-                unique_links.append((m.start(), href))
+        # First listing's publish_date represents page-level date for the
+        # collector's runaway-guard + binary-search probes.
+        page_first_date = next(
+            (l['publish_date'] for l in listings if l.get('publish_date')),
+            None,
+        )
 
-        if not unique_links:
-            return (None, 0, 'empty')
-
-        # Determine the date for each property link based on preceding date header
-        page_first_date = date_headers[0][1] if date_headers else None
         new_count = 0
         has_in_range = False
         has_before = False
         has_after = False
 
-        for link_pos, href in unique_links:
-            # Find the most recent date header before this link
-            listing_date = None
-            listing_date_str = None
-            for header_pos, header_date, header_text in reversed(date_headers):
-                if header_pos < link_pos:
-                    listing_date = header_date
-                    listing_date_str = header_text
-                    break
+        for lst in listings:
+            listing_date: Optional[date] = lst.get('publish_date')
+            href = lst['url']
+            funda_id = lst['id']
+            address = lst.get('address') or self._extract_address_from_url(href)
 
-            if listing_date is None and date_headers:
-                listing_date = date_headers[0][1]
-                listing_date_str = date_headers[0][2]
-
-            # Check if this property's date is within our target range
-            if listing_date:
+            # Date-range gate
+            if listing_date is not None:
                 if listing_date < self.target_start_date:
                     has_before = True
                     continue
-                elif listing_date > self.target_end_date:
+                if listing_date > self.target_end_date:
                     has_after = True
                     continue
-                else:
-                    has_in_range = True
+                has_in_range = True
             else:
+                # No date → treat as in-range; runaway guard upstream handles
+                # the case where this happens for many pages in a row.
                 has_in_range = True
 
-            # Extract property ID and add to collection
-            funda_id = self._extract_id_from_url(href)
-            if funda_id and funda_id not in self._seen_ids:
-                self._seen_ids.add(funda_id)
-                address = self._extract_address_from_url(href)
+            if funda_id in self._seen_ids:
+                continue
+            self._seen_ids.add(funda_id)
 
-                listed_since = ""
-                if listing_date:
-                    listed_since = listing_date.strftime("%Y-%m-%d")
+            listed_since = listing_date.strftime("%Y-%m-%d") if listing_date else ""
+            full_url = href if href.startswith('http') else f"https://www.funda.nl{href}"
 
-                # Ensure URL is absolute (funda search returns relative paths)
-                full_url = href if href.startswith('http') else f"https://www.funda.nl{href}"
+            self.collected.append({
+                "id": funda_id,
+                "url": full_url,
+                "address": address,
+                "listed_since": listed_since,
+            })
+            new_count += 1
+            logger.debug(f"    + ID: {funda_id} | {address} | listed: {listed_since}")
 
-                self.collected.append({
-                    "id": funda_id,
-                    "url": full_url,
-                    "address": address,
-                    "listed_since": listed_since,
-                })
-                new_count += 1
-                logger.debug(f"    + ID: {funda_id} | {address} | listed: {listed_since}")
-
-        # Determine overall status for this page
         if has_in_range:
             status = 'in_range'
         elif has_after and not has_before:
@@ -647,7 +713,8 @@ class PropertyCollector:
             status = 'empty'
 
         if new_count > 0:
-            dates_on_page = [_date_to_dutch(d) for _, d, _ in date_headers if d]
+            uniq_dates = sorted({l['publish_date'] for l in listings if l.get('publish_date')})
+            dates_on_page = [_date_to_dutch(d) for d in uniq_dates]
             logger.info(f"  +{new_count} properties | Dates: {', '.join(dates_on_page)}")
 
         return (page_first_date, new_count, status)
