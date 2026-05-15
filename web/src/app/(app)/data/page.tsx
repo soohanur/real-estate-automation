@@ -1,25 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import {
   propertiesApi,
   type ListParams,
   type Property,
+  type PropertyList,
 } from "@/lib/api/properties";
 import { PageContainer } from "@/components/page-container";
 import { EmailModal } from "@/components/email-modal";
 import { PropertiesTable } from "@/components/properties-table";
 import { formatNumber } from "@/lib/utils";
 
-// No pagination — single scrollable list. Backend cap is 100k; pulling
-// every row in one shot is fine because the table is fully virtualized.
-const LIST_LIMIT = 100000;
+// Infinite scroll: page size = 100 rows. Each page is a small JSON
+// payload (~150KB compact) so memory + CPU + DB stay flat regardless
+// of total dataset size — works the same at 3k or 1M rows.
+const PAGE_SIZE = 100;
 
-// Sheet tab dropdown is fixed — always all five buckets, regardless of
-// whether the DB has rows for each one yet.
 const TAB_OPTIONS = [
   "3-7 Days Ago",
   "8-12 Days Ago",
@@ -34,39 +38,61 @@ const STATUS_OPTIONS = [
   { label: "Not sent email", value: "not_sent" },
 ];
 
+// Filter slice — everything except limit/offset (those are infinite-query
+// internals). Changing any of these resets pagination back to page 0.
+type Filters = Pick<ListParams, "q" | "sheet_tab" | "email_status" | "sort" | "order">;
+
 export default function DataPage() {
   const qc = useQueryClient();
-  const [params, setParams] = useState<ListParams>({
+  const [filters, setFilters] = useState<Filters>({
     sort: "scrape_date",
     order: "asc",
-    limit: LIST_LIMIT,
-    offset: 0,
   });
   const [searchInput, setSearchInput] = useState("");
   const [emailProperty, setEmailProperty] = useState<Property | null>(null);
 
-  // Debounced search → params.q.
+  // Debounced search → filters.q.
   useEffect(() => {
     const t = setTimeout(() => {
-      setParams((p) => {
-        if ((p.q ?? "") === (searchInput || "")) return p;
-        return { ...p, q: searchInput || undefined, offset: 0 };
+      setFilters((f) => {
+        if ((f.q ?? "") === (searchInput || "")) return f;
+        return { ...f, q: searchInput || undefined };
       });
     }, 300);
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  const { data, isLoading, isFetching } = useQuery({
-    queryKey: ["properties", "list", params],
-    queryFn: () => propertiesApi.list(params),
-    // Keep prior page on screen during refetch / filter change — no
-    // unmount, no full re-render of 1000 rows.
+  const {
+    data,
+    isLoading,
+    isFetching,
+    isFetchingNextPage,
+    fetchNextPage,
+    hasNextPage,
+  } = useInfiniteQuery<PropertyList, Error>({
+    queryKey: ["properties", "list", filters],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      propertiesApi.list({
+        ...filters,
+        limit: PAGE_SIZE,
+        offset: pageParam as number,
+      }),
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((acc, p) => acc + p.items.length, 0);
+      return loaded < lastPage.total ? loaded : undefined;
+    },
     placeholderData: (prev) => prev,
-    // Backend auto-syncs Sheet→DB every 30s; faster polling burns DOM
-    // updates without ever showing fresher data.
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
   });
+
+  // Flatten loaded pages into one items array for the virtualizer.
+  const items: Property[] = useMemo(
+    () => (data?.pages ?? []).flatMap((p) => p.items as Property[]),
+    [data],
+  );
+  const total = data?.pages[0]?.total ?? 0;
 
   const syncM = useMutation({
     mutationFn: propertiesApi.sync,
@@ -79,15 +105,13 @@ export default function DataPage() {
   });
 
   const onSort = (key: string) => {
-    setParams((p) => {
-      if (p.sort === key) {
-        return { ...p, order: p.order === "asc" ? "desc" : "asc", offset: 0 };
+    setFilters((f) => {
+      if (f.sort === key) {
+        return { ...f, order: f.order === "asc" ? "desc" : "asc" };
       }
-      return { ...p, sort: key, order: "asc", offset: 0 };
+      return { ...f, sort: key, order: "asc" };
     });
   };
-
-  const items = data?.items ?? [];
 
   return (
     <PageContainer fill>
@@ -104,9 +128,9 @@ export default function DataPage() {
 
         <select
           className="input max-w-[200px]"
-          value={params.sheet_tab ?? ""}
+          value={filters.sheet_tab ?? ""}
           onChange={(e) =>
-            setParams((p) => ({ ...p, sheet_tab: e.target.value || undefined, offset: 0 }))
+            setFilters((f) => ({ ...f, sheet_tab: e.target.value || undefined }))
           }
         >
           <option value="">All time</option>
@@ -119,9 +143,9 @@ export default function DataPage() {
 
         <select
           className="input max-w-[160px]"
-          value={params.email_status ?? ""}
+          value={filters.email_status ?? ""}
           onChange={(e) =>
-            setParams((p) => ({ ...p, email_status: e.target.value || undefined, offset: 0 }))
+            setFilters((f) => ({ ...f, email_status: e.target.value || undefined }))
           }
         >
           {STATUS_OPTIONS.map((o) => (
@@ -147,8 +171,10 @@ export default function DataPage() {
         <span>
           {isLoading
             ? "Loading…"
-            : `${formatNumber(items.length)} of ${formatNumber(data?.total ?? 0)} properties`}
-          {isFetching && !isLoading ? " · refreshing…" : ""}
+            : `${formatNumber(items.length)} of ${formatNumber(total)} properties`}
+          {isFetching && !isLoading && !isFetchingNextPage ? " · refreshing…" : ""}
+          {isFetchingNextPage ? " · loading next 100…" : ""}
+          {!hasNextPage && items.length > 0 ? " · all loaded" : ""}
         </span>
       </div>
 
@@ -162,10 +188,17 @@ export default function DataPage() {
             No properties match the filters. Click <span className="font-medium">Sync from Sheet</span> to import.
           </>
         }
-        sort={params.sort}
-        order={params.order}
+        sort={filters.sort}
+        order={filters.order}
         onSort={onSort}
         onEmail={(p) => setEmailProperty(p as Property)}
+        // Infinite scroll wiring — the virtualizer fires onLoadMore when
+        // the user scrolls within ~10 rows of the end of the loaded set.
+        onLoadMore={() => {
+          if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+        }}
+        hasMore={!!hasNextPage}
+        isLoadingMore={isFetchingNextPage}
       />
 
       <EmailModal property={emailProperty} open={!!emailProperty} onClose={() => setEmailProperty(null)} />

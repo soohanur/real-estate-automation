@@ -140,6 +140,9 @@ export function PropertiesTable({
   onEmail,
   showBiddingEdit = true,
   className,
+  onLoadMore,
+  hasMore,
+  isLoadingMore,
 }: {
   items: PropertiesTableRow[];
   isLoading?: boolean;
@@ -151,6 +154,11 @@ export function PropertiesTable({
   onEmail?: (row: PropertiesTableRow) => void;
   showBiddingEdit?: boolean;
   className?: string;
+  /** Infinite scroll: called when user scrolls within ~10 rows of the
+   * end of the loaded set. Caller fetches the next page if available. */
+  onLoadMore?: () => void;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
 }) {
   void isFetching;
 
@@ -162,6 +170,17 @@ export function PropertiesTable({
     estimateSize: () => ROW_HEIGHT,
     overscan: 8,
   });
+
+  // Trigger fetch when user scrolls near the end of the loaded set.
+  const virtualItems = virtualizer.getVirtualItems();
+  useEffect(() => {
+    if (!onLoadMore || !hasMore || isLoadingMore) return;
+    const last = virtualItems[virtualItems.length - 1];
+    if (!last) return;
+    if (last.index >= items.length - 10) {
+      onLoadMore();
+    }
+  }, [virtualItems, hasMore, isLoadingMore, items.length, onLoadMore]);
 
   // Lightbox + cell modal state lives on the parent so child rows don't
   // need to be re-rendered when the modal opens/closes.
@@ -259,6 +278,25 @@ export function PropertiesTable({
                 />
               );
             })}
+          </div>
+        )}
+
+        {/* Infinite-scroll status footer — sits below the virtualized
+            list inside the same scroll container so it shows up when
+            the user reaches the end of the loaded set. */}
+        {(isLoadingMore || (!hasMore && items.length > 0)) && (
+          <div
+            className="flex items-center justify-center gap-2 border-t border-[var(--border)] bg-[var(--surface)] py-3 text-xs text-[var(--muted-foreground)]"
+            style={{ minWidth: totalGridWidth }}
+          >
+            {isLoadingMore ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Loading next 100…
+              </>
+            ) : (
+              <span>End of results</span>
+            )}
           </div>
         )}
       </div>
