@@ -43,15 +43,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (!token) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[var(--background)]">
+    <div
+      className="flex bg-[var(--background)] md:h-screen md:overflow-hidden"
+      // Dynamic viewport height so iOS Safari's collapsing address bar
+      // doesn't clip the bottom row. min-h-svh handles older browsers.
+      style={{ minHeight: "100dvh" }}
+    >
       {/* Side rail — desktop only. */}
       <div className="hidden md:flex">
         <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} />
       </div>
 
-      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <main className="flex min-w-0 flex-1 flex-col md:overflow-hidden">
         <MobileTopBar />
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden pb-16 md:pb-0">
+        <div className="flex flex-1 flex-col md:min-h-0 md:overflow-hidden">
           {children}
         </div>
       </main>

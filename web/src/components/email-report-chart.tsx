@@ -67,7 +67,7 @@ export function EmailReportChart({ className }: { className?: string }) {
   const totals = data?.totals;
 
   return (
-    <div className={cn("card flex min-h-0 flex-col p-5", className)}>
+    <div className={cn("card flex flex-col p-4 sm:p-5", className)}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold">Emails sent over time</h3>
@@ -131,7 +131,7 @@ export function EmailReportChart({ className }: { className?: string }) {
         </div>
       </div>
 
-      <div className="mt-4 min-h-[280px] flex-1">
+      <div className="mt-4 h-[280px] sm:h-[340px]">
         {error ? (
           <div className="grid h-full place-items-center text-sm text-rose-700">
             Failed to load email report
@@ -149,7 +149,7 @@ export function EmailReportChart({ className }: { className?: string }) {
             No emails in this range
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={320}>
+          <ResponsiveContainer width="100%" height="100%">
             <BarChart data={buckets} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis

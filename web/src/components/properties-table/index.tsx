@@ -217,7 +217,7 @@ function Header({
           )}
         </div>
       ))}
-      <div className="sticky right-0 bg-[var(--surface)] px-3 py-3 text-right">
+      <div className="bg-[var(--surface)] px-3 py-3 text-right md:sticky md:right-0">
         Actions
       </div>
     </div>

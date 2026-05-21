@@ -86,7 +86,7 @@ export const Row = memo(function Row({
           )}
         </div>
       ))}
-      <div className="sticky right-0 flex h-12 items-center justify-end gap-1 bg-[var(--surface)] px-3">
+      <div className="flex h-12 items-center justify-end gap-1 bg-[var(--surface)] px-3 md:sticky md:right-0">
         <Link
           href={`/data/${property.id}`}
           className="rounded-lg p-1.5 text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)]"

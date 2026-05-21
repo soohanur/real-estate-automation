@@ -27,8 +27,8 @@ export default function DashboardPage() {
   });
 
   return (
-    <PageContainer fill>
-      <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <PageContainer>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard
           href="/emails"
           label="Total emails sent"
@@ -71,13 +71,13 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="mt-3 grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <MiniCard label="Email queued" value={data?.emails_queued ?? 0} icon={<Clock className="h-4 w-4" />} />
         <MiniCard label="Email failed" value={data?.emails_failed ?? 0} icon={<AlertCircle className="h-4 w-4" />} />
         <MiniCard label="Total emails" value={data?.total_emails ?? 0} icon={<Mail className="h-4 w-4" />} />
       </div>
 
-      <EmailReportChart className="mt-6 flex-1" />
+      <EmailReportChart className="mt-6" />
     </PageContainer>
   );
 }
