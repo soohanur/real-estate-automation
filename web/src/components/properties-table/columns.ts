@@ -14,7 +14,7 @@ export const COLUMNS: ColumnDef[] = [
   { key: "days_on_market", label: "DOM", sortable: true, width: "70px" },
   { key: "asking_price", label: "Asking", sortable: true, width: "110px" },
   { key: "woz_value", label: "WOZ", sortable: true, width: "110px" },
-  { key: "suggested_bid", label: "Suggested", sortable: true, width: "110px" },
+  { key: "suggested_bid", label: "AI Bit Suggesion", sortable: true, width: "150px" },
   { key: "bidding_price", label: "Bidding (edit)", width: "150px" },
   { key: "images", label: "Images", width: "140px" },
   { key: "price_per_m2", label: "€/m²", width: "110px" },

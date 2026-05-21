@@ -21,17 +21,7 @@ import { formatNumber } from "@/lib/utils";
 
 // Infinite scroll: page size = 30 rows. Tiny pages keep first paint
 // near-instant and the fetch cadence smooth as the user scrolls.
-// Memory + CPU + DB stay flat regardless of total dataset size — works
-// the same at 3k or 1M rows.
 const PAGE_SIZE = 30;
-
-const TAB_OPTIONS = [
-  "3-7 Days Ago",
-  "8-12 Days Ago",
-  "13-17 Days Ago",
-  "25-30 Days Ago",
-  "30+ Days Ago",
-];
 
 const STATUS_OPTIONS = [
   { label: "All status", value: "" },
@@ -39,9 +29,24 @@ const STATUS_OPTIONS = [
   { label: "Not sent email", value: "not_sent" },
 ];
 
-// Filter slice — everything except limit/offset (those are infinite-query
-// internals). Changing any of these resets pagination back to page 0.
-type Filters = Pick<ListParams, "q" | "sheet_tab" | "email_status" | "sort" | "order">;
+// DOM presets — pick a range with one click. "Custom" exposes the
+// min + max inputs so the user can dial in any range (or set
+// min === max for "exactly N days").
+const DOM_PRESETS = [
+  { label: "All DOM", min: undefined as number | undefined, max: undefined as number | undefined },
+  { label: "Today (0)", min: 0, max: 0 },
+  { label: "Up to 3 days", min: 0, max: 3 },
+  { label: "Up to 7 days", min: 0, max: 7 },
+  { label: "8-14 days", min: 8, max: 14 },
+  { label: "15-30 days", min: 15, max: 30 },
+  { label: "30+ days", min: 30, max: undefined },
+  { label: "Custom", min: undefined, max: undefined },
+];
+
+type Filters = Pick<
+  ListParams,
+  "q" | "sheet_tab" | "email_status" | "sort" | "order" | "dom_min" | "dom_max"
+>;
 
 export default function DataPage() {
   const qc = useQueryClient();
@@ -51,6 +56,13 @@ export default function DataPage() {
   });
   const [searchInput, setSearchInput] = useState("");
   const [emailProperty, setEmailProperty] = useState<Property | null>(null);
+
+  // DOM custom-range inputs — live behind the "Custom" preset so we
+  // don't push a request on every keystroke until the user explicitly
+  // chooses Custom.
+  const [domPresetIdx, setDomPresetIdx] = useState(0);
+  const [customMin, setCustomMin] = useState<string>("");
+  const [customMax, setCustomMax] = useState<string>("");
 
   // Debounced search → filters.q.
   useEffect(() => {
@@ -62,6 +74,28 @@ export default function DataPage() {
     }, 300);
     return () => clearTimeout(t);
   }, [searchInput]);
+
+  // Apply DOM preset → filters whenever the preset OR (in Custom mode)
+  // the typed bounds change.
+  useEffect(() => {
+    const preset = DOM_PRESETS[domPresetIdx];
+    let next_min: number | undefined;
+    let next_max: number | undefined;
+    if (preset.label === "Custom") {
+      const a = customMin.trim() === "" ? undefined : Number(customMin);
+      const b = customMax.trim() === "" ? undefined : Number(customMax);
+      next_min = Number.isFinite(a) ? (a as number) : undefined;
+      next_max = Number.isFinite(b) ? (b as number) : undefined;
+    } else {
+      next_min = preset.min;
+      next_max = preset.max;
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFilters((f) => {
+      if (f.dom_min === next_min && f.dom_max === next_max) return f;
+      return { ...f, dom_min: next_min, dom_max: next_max };
+    });
+  }, [domPresetIdx, customMin, customMax]);
 
   const {
     data,
@@ -88,14 +122,9 @@ export default function DataPage() {
     refetchIntervalInBackground: false,
   });
 
-  // Flatten loaded pages into one items array for the virtualizer.
-  // Offset pagination + concurrent inserts (Sheet→DB auto-sync runs
-  // every 30s) means the same DB row can appear at two different
-  // offsets — once at offset N (before insert) and once at offset
-  // N+5 (after 5 new rows shift everything). Without dedup React
-  // gets duplicate keys and paints both rows on top of each other.
-  // Dedup-by-id keeps the first occurrence (which is older / further
-  // up the list, preserving sort order).
+  // Flatten loaded pages + dedup-by-id (offset pagination races the
+  // 30s auto-sync → same DB row can appear in two pages → duplicate
+  // React keys → virtualizer overlap. Keep first occurrence.)
   const items: Property[] = useMemo(() => {
     const all = (data?.pages ?? []).flatMap((p) => p.items as Property[]);
     const seen = new Set<number>();
@@ -128,6 +157,8 @@ export default function DataPage() {
     });
   };
 
+  const isCustomDom = DOM_PRESETS[domPresetIdx].label === "Custom";
+
   return (
     <PageContainer fill>
       <div className="card mb-4 flex shrink-0 flex-wrap items-center gap-3 p-4">
@@ -141,20 +172,43 @@ export default function DataPage() {
           />
         </div>
 
+        {/* DOM preset — replaces the old sheet-tab time filter (hidden
+            but kept in API so existing requests still work). */}
         <select
           className="input max-w-[200px]"
-          value={filters.sheet_tab ?? ""}
-          onChange={(e) =>
-            setFilters((f) => ({ ...f, sheet_tab: e.target.value || undefined }))
-          }
+          value={domPresetIdx}
+          onChange={(e) => setDomPresetIdx(Number(e.target.value))}
+          title="Filter by days on market (dynamic — listed_since to today)"
         >
-          <option value="">All time</option>
-          {TAB_OPTIONS.map((t) => (
-            <option key={t} value={t}>
-              {t}
+          {DOM_PRESETS.map((p, i) => (
+            <option key={p.label} value={i}>
+              DOM · {p.label}
             </option>
           ))}
         </select>
+
+        {isCustomDom && (
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              min={0}
+              placeholder="min"
+              value={customMin}
+              onChange={(e) => setCustomMin(e.target.value)}
+              className="input h-9 w-20 text-sm"
+            />
+            <span className="text-xs text-[var(--muted-foreground)]">→</span>
+            <input
+              type="number"
+              min={0}
+              placeholder="max"
+              value={customMax}
+              onChange={(e) => setCustomMax(e.target.value)}
+              className="input h-9 w-20 text-sm"
+            />
+            <span className="text-[10px] text-[var(--muted-foreground)]">days</span>
+          </div>
+        )}
 
         <select
           className="input max-w-[160px]"
@@ -207,8 +261,6 @@ export default function DataPage() {
         order={filters.order}
         onSort={onSort}
         onEmail={(p) => setEmailProperty(p as Property)}
-        // Infinite scroll wiring — the virtualizer fires onLoadMore when
-        // the user scrolls within ~10 rows of the end of the loaded set.
         onLoadMore={() => {
           if (hasNextPage && !isFetchingNextPage) fetchNextPage();
         }}

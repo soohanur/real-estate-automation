@@ -8,7 +8,8 @@ PATCH  /properties/{property_id}→ update notes / email_status
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import re
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
@@ -105,13 +106,69 @@ _SORT_FIELDS = {
     "property_type",
     "agency_name",
     "email_status",
+    "listed_since",
 }
+
+
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_DIGITS_RE = re.compile(r"\d+")
+
+
+def _dynamic_dom(listed_since: Optional[str], fallback: Optional[str]) -> Optional[str]:
+    """Return days-on-market as a fresh integer string derived from
+    listed_since (always YYYY-MM-DD in the sheet). Falls back to the
+    stored static days_on_market when the date isn't parseable.
+
+    Computed every read so the value grows by 1 every midnight without
+    rewriting any rows.
+    """
+    if listed_since and _ISO_DATE_RE.match(listed_since):
+        try:
+            d = datetime.strptime(listed_since, "%Y-%m-%d").date()
+            delta = (date.today() - d).days
+            if delta < 0:
+                # listed in the future — sanity guard
+                return fallback
+            return str(delta)
+        except ValueError:
+            pass
+    return fallback
+
+
+def _default_bidding(asking_price: Optional[str], current: Optional[str]) -> Optional[str]:
+    """If the user hasn't entered a bidding price, default to asking × 0.75
+    (25% below asking). User-entered values always win — the PATCH-saved
+    bidding_price overrides this synthetic default.
+    """
+    if current and current.strip():
+        return current
+    if not asking_price:
+        return current
+    digits = _DIGITS_RE.findall(asking_price)
+    if not digits:
+        return current
+    try:
+        asking_int = int(''.join(digits))
+    except ValueError:
+        return current
+    if asking_int <= 0:
+        return current
+    return str(int(round(asking_int * 0.75)))
+
+
+def _enrich_for_response(items: List["PropertyOut"]) -> None:
+    """In-place mutation of PropertyOut copies — never the ORM objects."""
+    for p in items:
+        p.days_on_market = _dynamic_dom(p.listed_since, p.days_on_market)
+        p.bidding_price = _default_bidding(p.asking_price, p.bidding_price)
 
 
 def _apply_filters(stmt, *, q: Optional[str], email_status: Optional[str],
                    property_type: Optional[str], energy_label: Optional[str],
                    agency_name: Optional[str], days_back: Optional[int],
-                   sheet_tab: Optional[str]):
+                   sheet_tab: Optional[str],
+                   dom_min: Optional[int] = None,
+                   dom_max: Optional[int] = None):
     if q:
         like = f"%{q}%"
         stmt = stmt.where(
@@ -136,6 +193,20 @@ def _apply_filters(stmt, *, q: Optional[str], email_status: Optional[str],
         stmt = stmt.where(Property.created_at >= cutoff)
     if sheet_tab:
         stmt = stmt.where(Property.sheet_tab == sheet_tab)
+    # DOM filter — listed_since is stored as YYYY-MM-DD so string
+    # compare gives the same ordering as date compare and uses the
+    # existing index. dom_min/dom_max are "days ago" bounds:
+    #   dom_min=5 → listed >= today - dom_max days  AND  listed <= today - 5 days
+    if dom_min is not None and dom_min >= 0:
+        cutoff_old = (date.today() - timedelta(days=dom_min)).isoformat()
+        stmt = stmt.where(Property.listed_since <= cutoff_old)
+        stmt = stmt.where(Property.listed_since != "")
+        stmt = stmt.where(Property.listed_since.is_not(None))
+    if dom_max is not None and dom_max >= 0:
+        cutoff_new = (date.today() - timedelta(days=dom_max)).isoformat()
+        stmt = stmt.where(Property.listed_since >= cutoff_new)
+        stmt = stmt.where(Property.listed_since != "")
+        stmt = stmt.where(Property.listed_since.is_not(None))
     return stmt
 
 
@@ -151,6 +222,8 @@ async def list_properties(
     agency_name: Optional[str] = Query(None),
     days_back: Optional[int] = Query(None, ge=1, le=3650),
     sheet_tab: Optional[str] = Query(None),
+    dom_min: Optional[int] = Query(None, ge=0, le=3650, description="min days-on-market (inclusive)"),
+    dom_max: Optional[int] = Query(None, ge=0, le=3650, description="max days-on-market (inclusive)"),
     sort: str = Query("created_at"),
     order: str = Query("asc", pattern="^(asc|desc)$"),
     # Cap raised so the dashboard table can render every row in one
@@ -173,7 +246,7 @@ async def list_properties(
         select(Property),
         q=q, email_status=email_status, property_type=property_type,
         energy_label=energy_label, agency_name=agency_name, days_back=days_back,
-        sheet_tab=sheet_tab,
+        sheet_tab=sheet_tab, dom_min=dom_min, dom_max=dom_max,
     )
 
     # Count.
@@ -181,7 +254,7 @@ async def list_properties(
         select(func.count(Property.id)),
         q=q, email_status=email_status, property_type=property_type,
         energy_label=energy_label, agency_name=agency_name, days_back=days_back,
-        sheet_tab=sheet_tab,
+        sheet_tab=sheet_tab, dom_min=dom_min, dom_max=dom_max,
     )
     total = (await db.execute(count_stmt)).scalar_one()
 
@@ -196,6 +269,10 @@ async def list_properties(
     # state. In compact mode we then blank the heaviest fields on the
     # Pydantic copies before serialization.
     out_items = [PropertyOut.model_validate(p) for p in items]
+    # Derived fields applied on every read so dashboards stay fresh
+    # without rewriting any rows: DOM grows automatically, bidding
+    # defaults to asking × 0.75 when user hasn't set one.
+    _enrich_for_response(out_items)
     if compact:
         for p in out_items:
             p.description = None
@@ -240,7 +317,9 @@ async def get_property(property_id: int, db: AsyncSession = Depends(get_db)):
     obj = await db.get(Property, property_id)
     if obj is None:
         raise HTTPException(status_code=404, detail="Property not found")
-    return obj
+    out = PropertyOut.model_validate(obj)
+    _enrich_for_response([out])
+    return out
 
 
 def _mirror_bidding_to_sheet(url: str, bidding_price: str) -> None:

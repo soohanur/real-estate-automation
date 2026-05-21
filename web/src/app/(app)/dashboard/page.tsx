@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { dashboardApi } from "@/lib/api/dashboard";
 import { PageContainer } from "@/components/page-container";
-import { PropertiesTable } from "@/components/properties-table";
+import { EmailReportChart } from "@/components/email-report-chart";
 import { cn, formatNumber } from "@/lib/utils";
 
 export default function DashboardPage() {
@@ -77,28 +77,7 @@ export default function DashboardPage() {
         <MiniCard label="Total emails" value={data?.total_emails ?? 0} icon={<Mail className="h-4 w-4" />} />
       </div>
 
-      <div className="mt-6 mb-2 flex shrink-0 items-center justify-between">
-        <h3 className="text-sm font-semibold">Latest scrapes</h3>
-        <Link href="/data" className="btn-ghost text-xs">
-          View all
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
-      </div>
-
-      <PropertiesTable
-        className="flex-1"
-        items={data?.latest_scrapes ?? []}
-        isLoading={isLoading}
-        emptyMessage={
-          <>
-            No scrapes yet. Start the{" "}
-            <Link href="/scraper" className="text-[var(--color-brand-600)] underline">
-              Funda Scraper
-            </Link>
-            .
-          </>
-        }
-      />
+      <EmailReportChart className="mt-6 flex-1" />
     </PageContainer>
   );
 }

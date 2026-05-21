@@ -62,6 +62,11 @@ export type ListParams = {
   agency_name?: string;
   days_back?: number;
   sheet_tab?: string;
+  /** Filter: minimum days-on-market (inclusive). Computed dynamically
+   * on the backend from listed_since. */
+  dom_min?: number;
+  /** Filter: maximum days-on-market (inclusive). */
+  dom_max?: number;
   sort?: string;
   order?: "asc" | "desc";
   limit?: number;
