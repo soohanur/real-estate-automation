@@ -45,7 +45,7 @@ export const COLUMNS: ColumnDef[] = [
 ];
 
 export const ROW_HEIGHT = 48;
-export const ACTIONS_WIDTH = "140px";
+export const ACTIONS_WIDTH = "108px";
 
 /** Pre-computed grid-template-columns string so header + every row
  * stay aligned without per-render string concatenation. */

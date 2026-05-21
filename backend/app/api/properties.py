@@ -89,6 +89,7 @@ class SyncResponse(BaseModel):
     inserted: int
     updated: int
     total_rows: int
+    bidding_filled: int = 0
 
 
 # ── Helpers ────────────────────────────────────────────────────

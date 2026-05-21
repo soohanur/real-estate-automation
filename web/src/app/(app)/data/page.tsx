@@ -29,18 +29,17 @@ const STATUS_OPTIONS = [
   { label: "Not sent email", value: "not_sent" },
 ];
 
-// DOM presets — pick a range with one click. "Custom" exposes the
-// min + max inputs so the user can dial in any range (or set
-// min === max for "exactly N days").
+// Days-on-market presets — pick a range with one click. "Custom"
+// exposes min + max inputs (set min === max for "exactly N days").
 const DOM_PRESETS = [
-  { label: "All DOM", min: undefined as number | undefined, max: undefined as number | undefined },
-  { label: "Today (0)", min: 0, max: 0 },
-  { label: "Up to 3 days", min: 0, max: 3 },
-  { label: "Up to 7 days", min: 0, max: 7 },
-  { label: "8-14 days", min: 8, max: 14 },
-  { label: "15-30 days", min: 15, max: 30 },
-  { label: "30+ days", min: 30, max: undefined },
-  { label: "Custom", min: undefined, max: undefined },
+  { label: "All",          min: undefined as number | undefined, max: undefined as number | undefined },
+  { label: "Today",        min: 0, max: 0 },
+  { label: "≤ 3 days",     min: 0, max: 3 },
+  { label: "≤ 7 days",     min: 0, max: 7 },
+  { label: "8–14 days",    min: 8, max: 14 },
+  { label: "15–30 days",   min: 15, max: 30 },
+  { label: "30+ days",     min: 30, max: undefined },
+  { label: "Custom",       min: undefined, max: undefined },
 ];
 
 type Filters = Pick<
@@ -118,8 +117,15 @@ export default function DataPage() {
       return loaded < lastPage.total ? loaded : undefined;
     },
     placeholderData: (prev) => prev,
-    refetchInterval: 30_000,
-    refetchIntervalInBackground: false,
+    // No polling — fresh data only on:
+    //   - page mount / route entry (default React Query behaviour)
+    //   - explicit Sync from Sheet button click (invalidates this key)
+    //   - filter / sort change (queryKey includes filters)
+    // Auto-refresh while user edits caused rows to shuffle and
+    // bidding inputs to lose context — disabled.
+    refetchInterval: false,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
   });
 
   // Flatten loaded pages + dedup-by-id (offset pagination races the
@@ -182,7 +188,7 @@ export default function DataPage() {
         >
           {DOM_PRESETS.map((p, i) => (
             <option key={p.label} value={i}>
-              DOM · {p.label}
+              {p.label}
             </option>
           ))}
         </select>

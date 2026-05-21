@@ -86,10 +86,18 @@ export const Row = memo(function Row({
           )}
         </div>
       ))}
-      <div className="flex h-12 items-center justify-end gap-1 bg-[var(--surface)] px-3 md:sticky md:right-0">
+      <div
+        className={cn(
+          "sticky right-0 z-[5] flex h-12 items-center justify-end gap-0.5 bg-[var(--surface)] px-2 md:px-3 md:gap-1",
+          // Soft shadow on left edge so it visually floats above the
+          // horizontally-scrolling content on mobile.
+          "shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.18)] md:shadow-none",
+          rowIndex % 2 === 1 && "bg-[var(--surface-2)]",
+        )}
+      >
         <Link
           href={`/data/${property.id}`}
-          className="rounded-lg p-1.5 text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)]"
+          className="grid h-8 w-8 place-items-center rounded-lg text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] md:h-9 md:w-9"
           title="View property profile"
           onMouseEnter={onPrefetchProfile}
           onTouchStart={onPrefetchProfile}
@@ -100,7 +108,7 @@ export const Row = memo(function Row({
           <button
             type="button"
             onClick={() => onEmail(property)}
-            className="rounded-lg p-1.5 text-[var(--color-brand-600)] hover:bg-[var(--color-brand-50)]"
+            className="grid h-8 w-8 place-items-center rounded-lg text-[var(--color-brand-600)] hover:bg-[var(--color-brand-50)] md:h-9 md:w-9"
             title="Send email"
           >
             <Mail className="h-4 w-4" />
@@ -111,7 +119,7 @@ export const Row = memo(function Row({
             href={property.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-lg p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+            className="grid h-8 w-8 place-items-center rounded-lg text-[var(--muted-foreground)] hover:bg-[var(--muted)] md:h-9 md:w-9"
             title="Open on funda.nl"
           >
             <ExternalLink className="h-4 w-4" />
