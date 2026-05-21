@@ -404,7 +404,7 @@ function StatTile({
       : "bg-[var(--surface-2)] text-[var(--foreground)]";
 
   return (
-    <div className={cn("rounded-2xl p-4", toneClass)}>
+    <div className={cn("rounded-xl p-4", toneClass)}>
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium opacity-80">{label}</span>
         {icon && <span className="opacity-70">{icon}</span>}
