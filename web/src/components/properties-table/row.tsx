@@ -92,6 +92,7 @@ export const Row = memo(function Row({
           className="rounded-lg p-1.5 text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)]"
           title="View property profile"
           onMouseEnter={onPrefetchProfile}
+          onTouchStart={onPrefetchProfile}
         >
           <FundaIcon className="h-4 w-4" />
         </Link>
