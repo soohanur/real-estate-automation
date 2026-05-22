@@ -9,6 +9,7 @@ Sheet tabs correspond to the publication_date filter:
 
 Uses gspread + google-auth with a service account.
 """
+import re
 import gspread
 from datetime import date
 from google.oauth2.service_account import Credentials
@@ -97,6 +98,14 @@ class SheetsWriter:
         # reported failure due to Google API eventual consistency but actually
         # landed, so the property never got added to KVK and gets re-scraped).
         self._tab_urls: dict = {}   # tab_name -> set(url)
+        # Cache: property URL → (tab_name, row_number). Lets back-write paths
+        # (update_valuation_row / update_bidding_price / update_bidding_formula)
+        # skip the 6-tab col_values(2) scan that find_row_by_url does.
+        # Seeded from col B on first touch of each tab, kept fresh by
+        # write_property after every successful append. Guarded by a lock
+        # because the three scraper workers append concurrently.
+        self._url_to_row: dict = {}   # url -> (tab_name, row_num)
+        self._url_to_row_lock = threading.Lock()
 
     # ── Connection ────────────────────────────────────────────
 
@@ -165,18 +174,60 @@ class SheetsWriter:
             self._apply_sheet_formatting(ws)
             self._formatted_sheets.add(tab_name)
 
-        # Seed the in-memory URL set from the sheet's Property URL column (B)
-        # the first time we touch this tab. Used for append-time dedup.
+        # Seed the in-memory URL set + URL→row cache from the sheet's
+        # Property URL column (B) the first time we touch this tab.
+        # Same single col_values(2) call powers both — append-time dedup
+        # (set) and back-write lookups (cache). Cache lets
+        # update_valuation_row / update_bidding_price /
+        # update_bidding_formula skip the 6-tab scan in find_row_by_url.
         if tab_name not in self._tab_urls:
             try:
                 col_b = ws.col_values(2)   # includes header
-                self._tab_urls[tab_name] = {v.strip() for v in col_b[1:] if v and v.strip()}
-                logger.info(f"  Seeded {len(self._tab_urls[tab_name])} known URLs for tab: {tab_name}")
+                urls_set: Set[str] = set()
+                # col_b[0] is the header. col_b[1] is row 2 (first data
+                # row), col_b[2] is row 3, etc. enumerate(start=2) keeps
+                # the 1-based sheet row in lock-step with the iteration.
+                local_url_to_row: dict = {}
+                for idx, v in enumerate(col_b[1:], start=2):
+                    u = (v or "").strip()
+                    if not u:
+                        continue
+                    urls_set.add(u)
+                    local_url_to_row[u] = (tab_name, idx)
+                self._tab_urls[tab_name] = urls_set
+                with self._url_to_row_lock:
+                    self._url_to_row.update(local_url_to_row)
+                logger.info(
+                    f"  Seeded {len(urls_set)} known URLs for tab: {tab_name}"
+                )
             except Exception as e:
                 logger.warning(f"  Could not seed URL set for {tab_name}: {e}")
                 self._tab_urls[tab_name] = set()
 
         return ws
+
+    # ── Cached row lookup ────────────────────────────────────────
+
+    _UPDATED_RANGE_RE = re.compile(r"!([A-Z]+)(\d+):")  # parses 'Tab!A51:AG51' → row 51
+
+    def _lookup_row(self, url: str) -> Optional[tuple]:
+        """Return (worksheet, row_number) for `url` from the cache when
+        possible; fall back to find_row_by_url's 6-tab scan only on a
+        cache miss. The worksheet handle comes from self._spreadsheet's
+        cached worksheet metadata — no API call when the tab is known.
+        """
+        cached = self._url_to_row.get(url)
+        if cached:
+            tab_name, row_num = cached
+            try:
+                self._connect()
+                if self._spreadsheet is None:
+                    raise RuntimeError("spreadsheet handle missing after _connect")
+                ws = self._spreadsheet.worksheet(tab_name)
+                return ws, row_num
+            except Exception as e:
+                logger.debug(f"  cached-row lookup [{tab_name}]: {e} — falling back")
+        return self.find_row_by_url(url)
 
     # ── Formatting ────────────────────────────────────────────
 
@@ -439,10 +490,31 @@ class SheetsWriter:
                 prop.get('agency_website', ''),
             ]
 
-            ws.append_row(row, value_input_option='USER_ENTERED')
+            # include_values_in_response=True so we can parse the row
+            # number Sheets actually assigned (avoids racing on a local
+            # counter when 3 workers append concurrently). Falls back to
+            # the old find_row_by_url path on the back-write side if the
+            # response shape changes.
+            append_resp = ws.append_row(
+                row,
+                value_input_option='USER_ENTERED',
+                include_values_in_response=True,
+            )
             # Track the URL so we never append it again this session.
             if url:
                 self._tab_urls.setdefault(tab_name, set()).add(url)
+                # Cache the assigned row so back-writes can skip the
+                # 6-tab scan in find_row_by_url. updatedRange looks
+                # like 'TabName!A51:AG51' — grab the first digit run.
+                try:
+                    rng = (append_resp or {}).get("updates", {}).get("updatedRange", "")
+                    m = self._UPDATED_RANGE_RE.search(rng or "")
+                    if m:
+                        row_num = int(m.group(2))
+                        with self._url_to_row_lock:
+                            self._url_to_row[url] = (tab_name, row_num)
+                except Exception as e:
+                    logger.debug(f"  url→row cache update failed: {e}")
             logger.info(
                 f"  ✓ Sheets [{tab_name}]: {prop.get('address', prop.get('id', '?'))}"
             )
@@ -535,7 +607,7 @@ class SheetsWriter:
         import time
         loc = None
         for attempt in range(1, find_retries + 1):
-            loc = self.find_row_by_url(url)
+            loc = self._lookup_row(url)
             if loc is not None:
                 break
             if attempt < find_retries:
@@ -573,7 +645,7 @@ class SheetsWriter:
         user edits a property's bidding price from the dashboard.
         Returns True on success, False if the URL is not present yet.
         """
-        loc = self.find_row_by_url(url)
+        loc = self._lookup_row(url)
         if loc is None:
             logger.warning(f"  ✗ Bidding back-write: URL not found in any tab: {url}")
             return False
@@ -599,7 +671,7 @@ class SheetsWriter:
 
         =IF(F{row}="", "", ROUND(F{row}*0.75))
         """
-        loc = self.find_row_by_url(url)
+        loc = self._lookup_row(url)
         if loc is None:
             logger.warning(f"  ✗ Bidding formula back-write: URL not found: {url}")
             return False
