@@ -10,10 +10,19 @@ Sheet tabs correspond to the publication_date filter:
 Uses gspread + google-auth with a service account.
 """
 import re
+import socket
 import gspread
 from datetime import date
 from google.oauth2.service_account import Credentials
 from typing import Optional, List, Set
+
+# Hard cap on every TCP socket read this process ever opens — including
+# the gspread / requests / urllib3 stack underneath. Without this a
+# hung Google Sheets read on a quiet TCP connection waits forever and
+# can block the asyncio event loop in the FastAPI backend. 60 s is well
+# above any healthy Sheets response time + long enough to ride out a
+# transient blip; quota/backoff loops handle anything legitimately slow.
+socket.setdefaulttimeout(60)
 
 from ..config import config
 from ..utils.logger import setup_logger
