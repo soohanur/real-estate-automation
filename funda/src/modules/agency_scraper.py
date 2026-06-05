@@ -298,10 +298,9 @@ class AgencyScraper:
 
             def _harvest():
                 """Pull candidates from current page; return True to stop early."""
-                for email in self._collect_emails(page):
-                    score = self._score_email(email, site_domain)
-                    if score > 0:
-                        candidates.append((score, email))
+                for email, is_mailto in self._collect_emails(page):
+                    score = self._score_email(email, site_domain, is_mailto)
+                    candidates.append((score, email))
                 # Stop early only on a strong hit (domain match + role prefix).
                 return any(s >= 130 for s, _ in candidates)
 
@@ -344,28 +343,31 @@ class AgencyScraper:
         return self._pick_best(candidates, site_domain)
 
     def _collect_emails(self, page) -> list:
-        """Return every cleaned, plausible email on the page (mailto links
-        first so they rank higher), de-duplicated, order preserved."""
+        """Return [(email, is_mailto)] — every cleaned, plausible email on the
+        page. mailto links are tagged trusted (the site owner explicitly
+        published them, so we accept them even on a different domain);
+        regex-from-HTML matches are untrusted (may be JS tokens / 3rd-party)
+        and only survive if they match the agency's own domain."""
         found: list = []
         seen = set()
 
-        def _add(raw: str):
+        def _add(raw: str, is_mailto: bool):
             email = self._clean_email(raw)
             if email and email not in seen and self._is_valid_email(email):
                 seen.add(email)
-                found.append(email)
+                found.append((email, is_mailto))
 
-        # 1. mailto: links — most reliable
+        # 1. mailto: links — most reliable (trusted)
         try:
             from urllib.parse import unquote
             for link in page.eles('@@tag()=a@@href:mailto:', timeout=3):
                 href = link.attr('href') or ''
                 if href.lower().startswith('mailto:'):
-                    _add(unquote(href[7:].split('?')[0]))
+                    _add(unquote(href[7:].split('?')[0]), True)
         except Exception:
             pass
 
-        # 2. footer / contact blocks
+        # 2. footer / contact blocks (text)
         try:
             for selector in ['tag:footer', '@@class:footer', '@@id:footer',
                              '@@class:contact', '@@id:contact']:
@@ -375,7 +377,7 @@ class AgencyScraper:
                     el = None
                 if el:
                     for m in EMAIL_PATTERN.findall(el.html):
-                        _add(m)
+                        _add(m, False)
         except Exception:
             pass
 
@@ -383,12 +385,12 @@ class AgencyScraper:
         try:
             html = page.html
             for m in EMAIL_PATTERN.findall(html):
-                _add(m)
+                _add(m, False)
             # de-obfuscate "naam (at) domein (dot) nl" style
             deob = re.sub(r'\s*\(?\s*(at|apenstaartje)\s*\)?\s*', '@', html, flags=re.I)
             deob = re.sub(r'\s*\(?\s*dot\s*\)?\s*', '.', deob, flags=re.I)
             for m in EMAIL_PATTERN.findall(deob):
-                _add(m)
+                _add(m, False)
         except Exception:
             pass
 
@@ -447,8 +449,12 @@ class AgencyScraper:
         return net[4:] if net.startswith('www.') else net
 
     @classmethod
-    def _score_email(cls, email: str, site_domain: str) -> int:
-        """Higher = better. Domain match dominates, then role prefix."""
+    def _score_email(cls, email: str, site_domain: str, is_mailto: bool = False) -> int:
+        """Higher = better. Domain match dominates, then role prefix. A
+        mailto link is trusted (+60) so a legit cross-domain contact address
+        the site owner published — common for franchise/platform agencies —
+        clears the accept threshold, while a regex-from-HTML match must match
+        the agency's own domain to survive (kills JS/web-builder junk)."""
         if not email:
             return 0
         local, domain = email.rsplit('@', 1)
@@ -458,6 +464,8 @@ class AgencyScraper:
             score += 100
         elif sd and (domain.split('.')[0] == sd.split('.')[0]):
             score += 40  # same brand, different TLD
+        if is_mailto:
+            score += 60  # owner-published contact link — trust across domains
         if local in ROLE_PREFIXES or any(local.startswith(p) for p in ROLE_PREFIXES):
             score += 30
         # Very short non-role locals ("st", "d") are almost always JS noise.
