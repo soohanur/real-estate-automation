@@ -56,6 +56,13 @@ _JUNK_TOKENS = (
     'cdn.', 'gstatic', '@2x', '@3x', 'example.org',
 )
 
+# Anchor href/text markers for a contact/about page (custom slugs).
+_CONTACT_LINK_KEYWORDS = (
+    'contact', 'over-ons', 'over ons', 'overons', 'kantoor', 'vestiging',
+    'team', 'medewerker', 'makelaars', 'bereik', 'adres', 'route',
+    'neem-contact', 'over-mij',
+)
+
 # Role-based local-parts — preferred over personal names, and used to
 # rescue emails concatenated with phone numbers (e.g. "0522-252412info@x").
 ROLE_PREFIXES = (
@@ -309,14 +316,25 @@ class AgencyScraper:
                 return self._finish(candidates, new_tab, site_domain)
 
             # ── Contact / about pages ──
+            # Prefer REAL contact links discovered in the landing-page DOM
+            # (handles custom slugs like /contacteer, /neem-contact-op,
+            # /kantoren/emmen that the guessed CONTACT_PATHS list misses),
+            # then fall back to the guessed paths. Same-domain only.
             base_url = self._get_base_url(website_url)
-            for path in CONTACT_PATHS:
+            discovered = self._discover_contact_links(page, base_url)
+            guessed = [base_url.rstrip('/') + p for p in CONTACT_PATHS]
+            visit, seen_urls = [], set()
+            for u in discovered + guessed:
+                if u not in seen_urls:
+                    seen_urls.add(u)
+                    visit.append(u)
+
+            for url in visit:
                 if time.time() >= deadline:
                     logger.debug("    Agency website timeout — stopping page search")
                     break
-                contact_url = base_url.rstrip('/') + path
                 try:
-                    page.get(contact_url)
+                    page.get(url)
                     self._smart_wait_page(page, max_wait=6)
                     if _harvest():
                         break
@@ -333,6 +351,35 @@ class AgencyScraper:
             except Exception:
                 pass
             return self._pick_best(candidates, site_domain)
+
+    def _discover_contact_links(self, page, base_url: str, limit: int = 6) -> list:
+        """Scan the page's anchors for real contact/about links (any slug)
+        on the same domain. Returns absolute URLs, most contact-like first."""
+        from urllib.parse import urljoin, urlparse
+        site = self._domain_of(base_url)
+        out, seen = [], set()
+        try:
+            for a in page.eles('@@tag()=a', timeout=2):
+                href = a.attr('href') or ''
+                if not href or href.lower().startswith(('mailto:', 'tel:', 'javascript:', '#')):
+                    continue
+                text = (a.text or '').lower()
+                h = href.lower()
+                if not any(k in h or k in text for k in _CONTACT_LINK_KEYWORDS):
+                    continue
+                full = urljoin(base_url, href).split('#')[0]
+                if not full.startswith('http'):
+                    continue
+                if self._domain_of(urlparse(full).netloc) != site:
+                    continue  # same domain only
+                if full not in seen:
+                    seen.add(full)
+                    out.append(full)
+                if len(out) >= limit:
+                    break
+        except Exception:
+            pass
+        return out
 
     def _finish(self, candidates, new_tab, site_domain) -> Optional[str]:
         if new_tab:
