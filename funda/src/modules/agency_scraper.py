@@ -474,10 +474,11 @@ class AgencyScraper:
         score -= min(len(local), 20) // 10  # prefer shorter local-parts slightly
         return score
 
-    # Minimum score to accept. 30 means the winner must have EITHER a
-    # site-domain/brand match (+100/+40) OR a role prefix (+30). A bare JS
-    # token like www.d@adoghq-browser-agent.com scores ~1 and is dropped.
-    _MIN_ACCEPT_SCORE = 30
+    # Minimum score to accept. 40 means the winner MUST share the agency's
+    # domain or brand (+100 / +40). A role prefix alone (+30) on a foreign
+    # domain — e.g. info@oveon.nl (the web-builder) on scholopurk.nl, or a
+    # JS token — is rejected. Better blank than the wrong company's inbox.
+    _MIN_ACCEPT_SCORE = 40
 
     @classmethod
     def _pick_best(cls, candidates, site_domain) -> Optional[str]:
