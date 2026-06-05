@@ -15,6 +15,7 @@ import { BiddingCell } from "./cells/bidding";
 import { ImagesCell } from "./cells/images";
 import { ClickableCell } from "./cells/clickable";
 import { CopyableContactCell } from "./cells/copy-contact";
+import { WebsiteCell } from "./cells/website";
 import { renderCell } from "./cells/render-cell";
 import type { PropertiesTableRow } from "./types";
 
@@ -76,6 +77,8 @@ export const Row = memo(function Row({
               label={c.label}
               onOverflow={onOpenCellModal}
             />
+          ) : c.key === "agency_website" ? (
+            <WebsiteCell property={property} />
           ) : (
             <ClickableCell
               label={c.label}
