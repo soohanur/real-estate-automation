@@ -52,6 +52,8 @@ _ALLOWED_TLDS = {
 _JUNK_TOKENS = (
     'datalayer', 'alayer.push', 'sentry', 'wixpress', 'fonts.gst',
     '.push', 'gtm-', 'googletag', '@sentry', 'react', 'webpack',
+    'adoghq', 'datadog', 'browser-agent', 'cloudflare', 'jsdelivr',
+    'cdn.', 'gstatic', '@2x', '@3x', 'example.org',
 )
 
 # Role-based local-parts — preferred over personal names, and used to
@@ -472,11 +474,14 @@ class AgencyScraper:
         score -= min(len(local), 20) // 10  # prefer shorter local-parts slightly
         return score
 
+    # Minimum score to accept. 30 means the winner must have EITHER a
+    # site-domain/brand match (+100/+40) OR a role prefix (+30). A bare JS
+    # token like www.d@adoghq-browser-agent.com scores ~1 and is dropped.
+    _MIN_ACCEPT_SCORE = 30
+
     @classmethod
     def _pick_best(cls, candidates, site_domain) -> Optional[str]:
-        # Only accept a positive-scored candidate — base-only matches (score
-        # <= 0) are usually JS tokens that merely look like emails.
-        good = [(s, e) for s, e in candidates if s > 0]
+        good = [(s, e) for s, e in candidates if s >= cls._MIN_ACCEPT_SCORE]
         if not good:
             return None
         good.sort(key=lambda t: t[0], reverse=True)
