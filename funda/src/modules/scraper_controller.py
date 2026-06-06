@@ -1579,17 +1579,22 @@ class FundaController:
                     _stall_since = time.time()
                 else:
                     stalled_for = time.time() - _stall_since
-                    work_left = remaining > 0 or not collection_done.is_set()
+                    # A real stall = there is QUEUED work the workers aren't
+                    # draining. If the queue is empty the workers are simply
+                    # idle-waiting for the collector (which may be scanning
+                    # pages that only yield duplicates) — that is NOT a hang,
+                    # so killing their browsers would be pointless and would
+                    # strand them. Only act when remaining > 0.
                     in_captcha = self._captcha_event.is_set()
                     if (
                         stalled_for >= config.WORKER_STALL_TIMEOUT
-                        and work_left
+                        and remaining > 0
                         and alive_workers > 0
                         and not in_captcha
                     ):
                         logger.error(
                             f"  STALL MONITOR: no progress for {stalled_for:.0f}s "
-                            f"(scraped+filtered stuck at {total_done}, {remaining} queued) "
+                            f"({remaining} queued but not draining) "
                             f"— force-killing all Chrome so workers rebuild"
                         )
                         try:
