@@ -147,6 +147,12 @@ class Config:
     # cooldown, the monitor force-kills all Chrome so workers rebuild fresh
     # browsers. Belt-and-braces behind the per-property watchdog.
     WORKER_STALL_TIMEOUT = int(os.getenv('FUNDA_WORKER_STALL_TIMEOUT', '300'))
+    # Overall-run watchdog: if NOTHING advances — not scraped, not filtered,
+    # not collected — for this long, the run is genuinely wedged (e.g. the
+    # collector itself hung on a captcha wall). Force-finalize: drain what we
+    # have, write Excel, flip status to COMPLETED instead of hanging on
+    # RUNNING forever. Generous so legit slow/captcha periods don't trip it.
+    RUN_FINALIZE_TIMEOUT = int(os.getenv('FUNDA_RUN_FINALIZE_TIMEOUT', '1200'))
 
     # WOZ (free public API: wozwaardeloket.nl)
     WOZ_API_BASE = os.getenv(

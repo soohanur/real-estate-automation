@@ -281,6 +281,11 @@ class FundaController:
         # Internal state
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        # Set by the overall-run watchdog to force a clean finalize → COMPLETED
+        # (as opposed to the user pressing Stop → IDLE). Also sets _stop_event
+        # so the collector/workers wind down, but the completion code reads
+        # this flag to choose COMPLETED instead of IDLE.
+        self._force_finalize = threading.Event()
         self._pause_event = threading.Event()
         self._pause_event.set()  # Not paused initially
         
@@ -409,6 +414,7 @@ class FundaController:
             return False
 
         self._stop_event.clear()
+        self._force_finalize.clear()
         self._pause_event.set()
         
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
@@ -1543,7 +1549,32 @@ class FundaController:
             # close_browser() wedges.
             _stall_last_total = -1
             _stall_since = time.time()
+            # Overall-run watchdog: track ANY progress (scraped+filtered+
+            # collected). If none of it moves for RUN_FINALIZE_TIMEOUT the run
+            # is wedged (e.g. collector hung on captcha) — force-finalize so it
+            # reaches COMPLETED instead of hanging on RUNNING forever.
+            _last_progress_sig = -1
+            _progress_since = time.time()
             while not self._check_stop():
+                # ── Overall-run watchdog ──
+                progress_sig = (
+                    self.stats.properties_scraped
+                    + self.stats.properties_filtered
+                    + self.stats.ids_collected
+                )
+                if progress_sig != _last_progress_sig:
+                    _last_progress_sig = progress_sig
+                    _progress_since = time.time()
+                elif time.time() - _progress_since >= config.RUN_FINALIZE_TIMEOUT:
+                    logger.error(
+                        f"  RUN WATCHDOG: no progress (scraped/filtered/collected) "
+                        f"for {config.RUN_FINALIZE_TIMEOUT}s — run is wedged. "
+                        f"Force-finalizing → will write Excel + flip to COMPLETED."
+                    )
+                    self._force_finalize.set()
+                    self._stop_event.set()  # wind down collector + workers
+                    break
+
                 # Check if collection is done AND queue is empty
                 if collection_done.is_set() and work_queue.empty():
                     # Send sentinel values to stop workers
@@ -1716,7 +1747,9 @@ class FundaController:
             # ── COMPLETION ─────────────────────────────────────
             total_collected = len(self.collector.collected) if self.collector else 0
 
-            if self._check_stop():
+            # A genuine user Stop → IDLE. A watchdog force-finalize also sets
+            # _stop_event, but means "wrap up what we have" → COMPLETED.
+            if self._check_stop() and not self._force_finalize.is_set():
                 self._update_stats(status=ScraperStatus.IDLE)
                 logger.info("Scraper stopped by user")
             else:
