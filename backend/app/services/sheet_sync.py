@@ -81,6 +81,17 @@ def _open_spreadsheet() -> gspread.Spreadsheet:
     return gspread.authorize(creds).open_by_key(config.GOOGLE_SHEETS_SPREADSHEET_ID)
 
 
+# Only these worksheets hold scraped property rows. Everything else
+# (Emails mirror tab, scratch tabs) is ignored by the sync.
+_PROPERTY_TABS = {
+    "3-7 Days Ago",
+    "8-12 Days Ago",
+    "13-17 Days Ago",
+    "25-30 Days Ago",
+    "30+ Days Ago",
+}
+
+
 def fetch_sheet_rows() -> List[Dict[str, Any]]:
     """Pull every data row from every worksheet and return as dicts.
 
@@ -92,6 +103,12 @@ def fetch_sheet_rows() -> List[Dict[str, Any]]:
     ss = _open_spreadsheet()
     out: List[Dict[str, Any]] = []
     for ws in ss.worksheets():
+        # Only the property tabs hold property rows. Other tabs (e.g.
+        # "Emails", which carries property URLs in its own columns) must NOT
+        # be imported as properties — doing so caused the URL to collide with
+        # the real property row and the whole sync 500'd on a UniqueViolation.
+        if ws.title not in _PROPERTY_TABS:
+            continue
         try:
             values: List[List[str]] = ws.get_all_values()
         except Exception as e:
