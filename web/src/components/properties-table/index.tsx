@@ -34,6 +34,7 @@ type PropertiesTableProps = {
   order?: "asc" | "desc";
   onSort?: (key: string) => void;
   onEmail?: (row: PropertiesTableRow) => void;
+  onDelete?: (row: PropertiesTableRow) => void;
   showBiddingEdit?: boolean;
   /** Outer card classes. */
   className?: string;
@@ -109,6 +110,7 @@ function DesktopTable({
   order,
   onSort,
   onEmail,
+  onDelete,
   showBiddingEdit = true,
   onLoadMore,
   hasMore,
@@ -163,6 +165,7 @@ function DesktopTable({
                   property={p}
                   rowIndex={vi.index}
                   onEmail={onEmail ? handleEmail : undefined}
+                  onDelete={onDelete}
                   onOpenImages={onOpenImages}
                   onOpenCellModal={onOpenCellModal}
                   showBiddingEdit={showBiddingEdit}
@@ -211,6 +214,7 @@ function MobileTable({
   order,
   onSort,
   onEmail,
+  onDelete,
   showBiddingEdit = true,
   onLoadMore,
   hasMore,
@@ -260,6 +264,7 @@ function MobileTable({
                 property={p}
                 rowIndex={idx}
                 onEmail={onEmail ? handleEmail : undefined}
+                onDelete={onDelete}
                 onOpenImages={onOpenImages}
                 onOpenCellModal={onOpenCellModal}
                 showBiddingEdit={showBiddingEdit}

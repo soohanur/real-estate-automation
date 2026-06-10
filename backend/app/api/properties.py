@@ -137,8 +137,8 @@ def _dynamic_dom(listed_since: Optional[str], fallback: Optional[str]) -> Option
 
 
 def _default_bidding(asking_price: Optional[str], current: Optional[str]) -> Optional[str]:
-    """If the user hasn't entered a bidding price, default to asking × 0.78
-    (22% below asking). User-entered values always win — the PATCH-saved
+    """If the user hasn't entered a bidding price, default to asking × 0.80
+    (20% below asking). User-entered values always win — the PATCH-saved
     bidding_price overrides this synthetic default.
     """
     if current and current.strip():
@@ -154,7 +154,7 @@ def _default_bidding(asking_price: Optional[str], current: Optional[str]) -> Opt
         return current
     if asking_int <= 0:
         return current
-    return str(int(round(asking_int * 0.78)))
+    return str(int(round(asking_int * 0.80)))
 
 
 def _enrich_for_response(items: List["PropertyOut"]) -> None:
@@ -272,7 +272,7 @@ async def list_properties(
     out_items = [PropertyOut.model_validate(p) for p in items]
     # Derived fields applied on every read so dashboards stay fresh
     # without rewriting any rows: DOM grows automatically, bidding
-    # defaults to asking × 0.78 when user hasn't set one.
+    # defaults to asking × 0.80 when user hasn't set one.
     _enrich_for_response(out_items)
     if compact:
         for p in out_items:
@@ -365,6 +365,63 @@ async def update_property(
     if bidding_changed and obj.url:
         background_tasks.add_task(_mirror_bidding_to_sheet, obj.url, obj.bidding_price or "")
     return obj
+
+
+@router.delete("/{property_id}")
+async def delete_property(property_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete a property from BOTH the Google Sheet and the DB. Sheet row is
+    removed first (best-effort); the DB row + its emails (cascade) follow.
+    Returns what was removed."""
+    obj = await db.get(Property, property_id)
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Property not found")
+    url = obj.url
+    address = obj.address
+
+    # Remove the sheet row + purge the KVK id (sync — runs in a thread so a
+    # slow Sheets call can't block the event loop; bounded by socket timeout).
+    # Purging KVK means a deleted property is never re-collected in future
+    # scrapes (user no longer wants it).
+    sheet_deleted = False
+    kvk_removed = False
+    if url:
+        import asyncio
+
+        def _del_sheet_and_kvk():
+            import re as _re
+            import sys
+            from pathlib import Path
+            root = Path(__file__).resolve().parents[3]
+            if str(root) not in sys.path:
+                sys.path.insert(0, str(root))
+            from funda.src.modules import SheetsWriter
+            from funda.src.modules.kvk_storage import get_kvk_storage
+            sd = SheetsWriter().delete_row_by_url(url)
+            # Funda object id = the 7-10 digit segment in the detail URL.
+            kr = False
+            m = _re.search(r"/(\d{7,10})/?(?:\?|$)", url)
+            fid = m.group(1) if m else None
+            if not fid:
+                for seg in reversed(url.rstrip("/").split("/")):
+                    if seg.isdigit() and 7 <= len(seg) <= 10:
+                        fid = seg
+                        break
+            if fid:
+                kr = get_kvk_storage().remove(fid)
+            return sd, kr
+
+        try:
+            sheet_deleted, kvk_removed = await asyncio.wait_for(
+                asyncio.to_thread(_del_sheet_and_kvk), timeout=90
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Sheet/KVK delete failed for {url}: {e}")
+
+    await db.delete(obj)
+    await db.commit()
+    return {"deleted": True, "id": property_id, "address": address,
+            "sheet_deleted": sheet_deleted, "kvk_removed": kvk_removed}
 
 
 @router.post("/sync", response_model=SyncResponse)

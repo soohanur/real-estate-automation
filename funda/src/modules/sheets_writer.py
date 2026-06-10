@@ -598,6 +598,32 @@ class SheetsWriter:
                     return ws, idx
         return None
 
+    def delete_row_by_url(self, url: str) -> bool:
+        """Delete the sheet row matching `url` (across all tabs). Returns
+        True if a row was deleted. Also evicts the URL from the in-memory
+        caches so a later re-scrape can re-add it cleanly."""
+        loc = self._lookup_row(url)
+        if loc is None:
+            loc = self.find_row_by_url(url)
+        if loc is None:
+            return False
+        ws, row_num = loc
+        ws.delete_rows(row_num)
+        # Cache hygiene: drop the URL + invalidate row cache for that tab,
+        # since every row below the deleted one shifted up by 1.
+        try:
+            with self._url_to_row_lock:
+                self._url_to_row.pop(url, None)
+                # row numbers for this tab are now stale → drop them all
+                stale = [u for u, (t, _) in self._url_to_row.items() if t == ws.title]
+                for u in stale:
+                    self._url_to_row.pop(u, None)
+            if ws.title in self._tab_urls:
+                self._tab_urls[ws.title].discard(url)
+        except Exception:
+            pass
+        return True
+
     def list_pending_valuations(self) -> List[dict]:
         """Return rows where Walter Play-it-Safe (col AF) is empty.
         Each item: {tab, row, url, address, asking_price, days_on_market}.
@@ -704,13 +730,13 @@ class SheetsWriter:
         return ok
 
     def update_bidding_formula(self, url: str) -> bool:
-        """Write a per-row 22%-off formula to col I for the row matching `url`.
+        """Write a per-row 20%-off formula to col I for the row matching `url`.
 
         Used by sheet_sync on freshly-scraped rows so the spreadsheet
         does the math (zero CPU + zero per-row API quota on our side
         — single batch call writes one cell of formula text).
 
-        =IF(F{row}="", "", ROUND(F{row}*0.78))
+        =IF(F{row}="", "", ROUND(F{row}*0.80))
         """
         loc = self._lookup_row(url)
         if loc is None:
@@ -718,7 +744,7 @@ class SheetsWriter:
             return False
         ws, row_num = loc
         ask_col = 'F'  # Asking Price (€) is the 6th column.
-        formula = f'=IF({ask_col}{row_num}="","",ROUND({ask_col}{row_num}*0.78))'
+        formula = f'=IF({ask_col}{row_num}="","",ROUND({ask_col}{row_num}*0.80))'
         ok = self._batch_update_with_backoff(
             ws,
             [{

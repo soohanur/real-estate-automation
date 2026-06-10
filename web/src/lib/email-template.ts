@@ -11,7 +11,7 @@
 import type { Property } from "./api/properties";
 
 const SENDER_NAME = "Nationale Vastgoed Combinatie";
-const SENDER_PHONE = "085 208 2333";
+const SENDER_PHONE = "085-2082323";
 const VALIDITY_DAYS = 5;
 
 function euro(v: string | null | undefined): string {

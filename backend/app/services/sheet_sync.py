@@ -121,7 +121,7 @@ _DIGITS_RE = re.compile(r"\d+")
 
 
 def _default_bidding_from_asking(asking_price: Optional[str]) -> Optional[str]:
-    """Compute the 25%-off default bidding price from an asking-price
+    """Compute the 20%-off default bidding price from an asking-price
     string. Returns None when asking can't be parsed to a positive int.
     Mirrors the read-time enrichment in properties.py so the value
     persisted in DB matches what the dashboard already displays."""
@@ -136,7 +136,7 @@ def _default_bidding_from_asking(asking_price: Optional[str]) -> Optional[str]:
         return None
     if asking_int <= 0:
         return None
-    return str(int(round(asking_int * 0.78)))
+    return str(int(round(asking_int * 0.80)))
 
 
 def _batch_write_formulas_safe(
@@ -194,7 +194,7 @@ async def sync_properties(db: AsyncSession) -> Dict[str, int]:  # noqa: D401
     Read all sheet rows and upsert into `properties` table. Returns counts.
 
     Side effect: for any property where the Sheet's Bidding Price column
-    is empty but Asking Price is valid, computes the 25%-off default,
+    is empty but Asking Price is valid, computes the 20%-off default,
     persists it to DB, AND schedules a background write back to Sheet
     col I so the spreadsheet view also shows the default. Existing
     user-entered values are never overwritten.
@@ -241,8 +241,8 @@ async def sync_properties(db: AsyncSession) -> Dict[str, int]:  # noqa: D401
         if sheet_tab:
             payload["sheet_tab"] = sheet_tab
 
-        # The Sheet now holds the 22%-off math as a per-row formula
-        # (=IF(F<r>="","",ROUND(F<r>*0.78))). Whenever the Sheet cell
+        # The Sheet now holds the 20%-off math as a per-row formula
+        # (=IF(F<r>="","",ROUND(F<r>*0.80))). Whenever the Sheet cell
         # is blank — which happens on freshly-scraped rows that haven't
         # been formula-written yet — we enqueue a one-cell formula
         # write. DB just receives whatever value the Sheet evaluates
@@ -255,7 +255,7 @@ async def sync_properties(db: AsyncSession) -> Dict[str, int]:  # noqa: D401
             if not (sheet_tab and row_index and asking_present and sheet_bidding_blank):
                 return
             formula = (
-                f'=IF({_ASK_COL}{row_index}="","",ROUND({_ASK_COL}{row_index}*0.78))'
+                f'=IF({_ASK_COL}{row_index}="","",ROUND({_ASK_COL}{row_index}*0.80))'
             )
             pending_formula_writes.setdefault(sheet_tab, []).append((row_index, formula))
 

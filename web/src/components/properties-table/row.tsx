@@ -6,7 +6,7 @@
 import { memo } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Mail } from "lucide-react";
+import { ExternalLink, Mail, Trash2 } from "lucide-react";
 import { propertiesApi } from "@/lib/api/properties";
 import { cn } from "@/lib/utils";
 import { COLUMNS, GRID_TEMPLATE } from "./columns";
@@ -23,6 +23,7 @@ type RowProps = {
   property: PropertiesTableRow;
   rowIndex: number;
   onEmail?: (row: PropertiesTableRow) => void;
+  onDelete?: (row: PropertiesTableRow) => void;
   onOpenImages: (images: string[], address: string) => void;
   onOpenCellModal: (label: string, value: string) => void;
   showBiddingEdit: boolean;
@@ -33,6 +34,7 @@ export const Row = memo(function Row({
   property,
   rowIndex,
   onEmail,
+  onDelete,
   onOpenImages,
   onOpenCellModal,
   showBiddingEdit,
@@ -127,6 +129,16 @@ export const Row = memo(function Row({
           >
             <ExternalLink className="h-4 w-4" />
           </a>
+        )}
+        {onDelete && (
+          <button
+            type="button"
+            onClick={() => onDelete(property)}
+            className="grid h-8 w-8 place-items-center rounded-lg text-rose-600 hover:bg-rose-50 md:h-9 md:w-9"
+            title="Delete property (sheet + database)"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
         )}
       </div>
     </div>

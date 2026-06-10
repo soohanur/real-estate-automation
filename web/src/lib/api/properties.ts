@@ -102,4 +102,8 @@ export const propertiesApi = {
     const r = await api.get<FilterOptions>("/properties/filters");
     return r.data;
   },
+  async remove(id: number): Promise<{ deleted: boolean; sheet_deleted: boolean }> {
+    const r = await api.delete(`/properties/${id}`);
+    return r.data;
+  },
 };

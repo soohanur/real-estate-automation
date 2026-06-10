@@ -82,6 +82,16 @@ class KvkStorage:
             self._save()
             return True
 
+    def remove(self, kvk: str) -> bool:
+        """Remove a KVK number from storage so the property can be deleted
+        for good and never re-collected. Returns True if it was present."""
+        with self._lock:
+            if kvk not in self._kvk_set:
+                return False
+            self._kvk_set.discard(kvk)
+            self._save()
+            return True
+
     def add_many(self, kvk_numbers: List[str]) -> int:
         """
         Add multiple KVK numbers.

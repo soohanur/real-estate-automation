@@ -57,6 +57,7 @@ export default function DataPage() {
   });
   const [searchInput, setSearchInput] = useState("");
   const [emailProperty, setEmailProperty] = useState<Property | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Property | null>(null);
 
   // DOM custom-range inputs — live behind the "Custom" preset so we
   // don't push a request on every keystroke until the user explicitly
@@ -154,6 +155,19 @@ export default function DataPage() {
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
     onError: () => toast.error("Sync failed — check backend logs"),
+  });
+
+  const deleteM = useMutation({
+    mutationFn: (id: number) => propertiesApi.remove(id),
+    onSuccess: (r) => {
+      toast.success(
+        `Property deleted${r.sheet_deleted ? " (sheet + database)" : " (database only — sheet row not found)"}.`,
+      );
+      setConfirmDelete(null);
+      qc.invalidateQueries({ queryKey: ["properties"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+    onError: () => toast.error("Delete failed — check backend logs"),
   });
 
   const onSort = (key: string) => {
@@ -269,6 +283,7 @@ export default function DataPage() {
         order={filters.order}
         onSort={onSort}
         onEmail={(p) => setEmailProperty(p as Property)}
+        onDelete={(p) => setConfirmDelete(p as Property)}
         onLoadMore={() => {
           if (hasNextPage && !isFetchingNextPage) fetchNextPage();
         }}
@@ -277,6 +292,38 @@ export default function DataPage() {
       />
 
       <EmailModal property={emailProperty} open={!!emailProperty} onClose={() => setEmailProperty(null)} />
+
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
+          <div className="card w-full max-w-md p-5">
+            <h3 className="text-base font-semibold">Delete this property?</h3>
+            <p className="mt-2 text-sm text-[var(--muted-foreground)]">
+              {confirmDelete.address || confirmDelete.url}
+            </p>
+            <p className="mt-2 text-xs text-[var(--muted-foreground)]">
+              This permanently removes the row from <b>both the Google Sheet and the database</b>. This cannot be undone.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => setConfirmDelete(null)}
+                disabled={deleteM.isPending}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteM.mutate(confirmDelete.id)}
+                disabled={deleteM.isPending}
+                className="inline-flex items-center gap-2 rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+              >
+                {deleteM.isPending ? "Deleting…" : "Yes, delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </PageContainer>
   );
 }
