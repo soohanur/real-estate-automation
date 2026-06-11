@@ -736,7 +736,7 @@ class SheetsWriter:
         does the math (zero CPU + zero per-row API quota on our side
         — single batch call writes one cell of formula text).
 
-        =IF(F{row}="","",MAX(ROUND(F{row}*0.8),F{row}-86000))
+        tiered: <300k 20% / 300k+ 18% / 400k+ 17% / 500k+ 16% off
         """
         loc = self._lookup_row(url)
         if loc is None:
@@ -744,7 +744,7 @@ class SheetsWriter:
             return False
         ws, row_num = loc
         ask_col = 'F'  # Asking Price (€) is the 6th column.
-        formula = f'=IF({ask_col}{row_num}="","",MAX(ROUND({ask_col}{row_num}*0.8),{ask_col}{row_num}-86000))'
+        formula = f'=IF({ask_col}{row_num}="","",ROUND({ask_col}{row_num}*IF({ask_col}{row_num}>=500000,0.84,IF({ask_col}{row_num}>=400000,0.83,IF({ask_col}{row_num}>=300000,0.82,0.80)))))'
         ok = self._batch_update_with_backoff(
             ws,
             [{

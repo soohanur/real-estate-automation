@@ -136,10 +136,24 @@ def _dynamic_dom(listed_since: Optional[str], fallback: Optional[str]) -> Option
     return fallback
 
 
+def _bidding_multiplier(asking_int: int) -> float:
+    """Tiered keep-fraction by asking band (1 - discount%)."""
+    if asking_int >= 500000:
+        return 0.84  # 16% off
+    if asking_int >= 400000:
+        return 0.83  # 17% off
+    if asking_int >= 300000:
+        return 0.82  # 18% off
+    return 0.80      # 20% off
+
+
 def _default_bidding(asking_price: Optional[str], current: Optional[str]) -> Optional[str]:
-    """If the user hasn't entered a bidding price, default to asking minus
-    20%, BUT the discount is capped at €86,000 — so for asking above
-    €430,000 the bid is a flat asking − 86,000 (not a full 20%).
+    """If the user hasn't entered a bidding price, default to asking minus a
+    tiered discount by asking band:
+        < €300k  → 20% off  (×0.80)
+        €300k+   → 18% off  (×0.82)
+        €400k+   → 17% off  (×0.83)
+        €500k+   → 16% off  (×0.84)
     User-entered values always win.
     """
     if current and current.strip():
@@ -155,8 +169,7 @@ def _default_bidding(asking_price: Optional[str], current: Optional[str]) -> Opt
         return current
     if asking_int <= 0:
         return current
-    discount = min(round(asking_int * 0.20), 86000)
-    return str(int(asking_int - discount))
+    return str(int(round(asking_int * _bidding_multiplier(asking_int))))
 
 
 def _enrich_for_response(items: List["PropertyOut"]) -> None:
