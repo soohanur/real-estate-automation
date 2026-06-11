@@ -154,6 +154,7 @@ def _default_bidding(asking_price: Optional[str], current: Optional[str]) -> Opt
         €300k+   → 18% off  (×0.82)
         €400k+   → 17% off  (×0.83)
         €500k+   → 16% off  (×0.84)
+    AND the discount is capped at €86,000 (bidding never below asking-86000).
     User-entered values always win.
     """
     if current and current.strip():
@@ -169,7 +170,9 @@ def _default_bidding(asking_price: Optional[str], current: Optional[str]) -> Opt
         return current
     if asking_int <= 0:
         return current
-    return str(int(round(asking_int * _bidding_multiplier(asking_int))))
+    tiered = round(asking_int * _bidding_multiplier(asking_int))
+    # Cap: discount never exceeds €86,000 (bidding never < asking - 86000).
+    return str(int(max(tiered, asking_int - 86000)))
 
 
 def _enrich_for_response(items: List["PropertyOut"]) -> None:
