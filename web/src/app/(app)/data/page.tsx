@@ -52,7 +52,7 @@ type Filters = Pick<
 export default function DataPage() {
   const qc = useQueryClient();
   const [filters, setFilters] = useState<Filters>({
-    sort: "scrape_date",
+    sort: "display_order",
     order: "asc",
     email_status: "not_sent",
   });

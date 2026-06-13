@@ -226,6 +226,9 @@ class Property(Base):
     # CRM extras.
     email_status = Column(String, default="not_sent", index=True)
     notes = Column(Text)
+    # Manual/shuffled display order for the Global Data table (lower = first).
+    # Null for freshly-scraped rows (shown last). Set by the shuffle op.
+    display_order = Column(Integer, index=True)
 
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

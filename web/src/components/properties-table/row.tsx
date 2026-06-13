@@ -62,8 +62,8 @@ export const Row = memo(function Row({
       style={{ ...style, gridTemplateColumns: GRID_TEMPLATE }}
       className={cn(
         "grid border-b border-[var(--border)] hover:bg-[var(--muted)]",
-        rowIndex % 2 === 1 && "bg-[var(--surface-2)]",
-        selected && "bg-[var(--color-brand-50)]",
+        rowIndex % 2 === 1 && !selected && "bg-[var(--surface-2)]",
+        selected && "bg-blue-100 hover:bg-blue-100",
       )}
     >
       <div className="grid h-12 place-items-center px-2">

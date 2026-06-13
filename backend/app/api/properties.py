@@ -108,6 +108,7 @@ _SORT_FIELDS = {
     "agency_name",
     "email_status",
     "listed_since",
+    "display_order",
 }
 
 
@@ -279,7 +280,13 @@ async def list_properties(
 
     # Page.
     col = getattr(Property, sort)
-    base = base.order_by(col.asc() if order == "asc" else col.desc())
+    direction = col.asc() if order == "asc" else col.desc()
+    if sort == "display_order":
+        # Freshly-scraped rows have no shuffle order yet → keep them last,
+        # then fall back to newest-first so the page still makes sense.
+        base = base.order_by(direction.nulls_last(), Property.created_at.desc())
+    else:
+        base = base.order_by(direction)
     base = base.offset(offset).limit(limit)
     res = await db.execute(base)
     items = res.scalars().all()
