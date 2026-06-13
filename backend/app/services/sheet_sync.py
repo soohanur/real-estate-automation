@@ -163,8 +163,8 @@ def _default_bidding_from_asking(asking_price: Optional[str]) -> Optional[str]:
     else:
         mult = 0.80
     tiered = round(asking_int * mult)
-    # Cap: discount never exceeds €86,000.
-    return str(int(max(tiered, asking_int - 86000)))
+    # Cap: discount never exceeds €76,000.
+    return str(int(max(tiered, asking_int - 76000)))
 
 
 def _batch_write_formulas_safe(
@@ -283,7 +283,7 @@ async def sync_properties(db: AsyncSession) -> Dict[str, int]:  # noqa: D401
             if not (sheet_tab and row_index and asking_present and sheet_bidding_blank):
                 return
             formula = (
-                f'=IF({_ASK_COL}{row_index}="","",MAX(ROUND({_ASK_COL}{row_index}*IF({_ASK_COL}{row_index}>=500000,0.84,IF({_ASK_COL}{row_index}>=400000,0.83,IF({_ASK_COL}{row_index}>=300000,0.82,0.80)))),{_ASK_COL}{row_index}-86000))'
+                f'=IF({_ASK_COL}{row_index}="","",MAX(ROUND({_ASK_COL}{row_index}*IF({_ASK_COL}{row_index}>=500000,0.84,IF({_ASK_COL}{row_index}>=400000,0.83,IF({_ASK_COL}{row_index}>=300000,0.82,0.80)))),{_ASK_COL}{row_index}-76000))'
             )
             pending_formula_writes.setdefault(sheet_tab, []).append((row_index, formula))
 
