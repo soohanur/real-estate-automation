@@ -13,7 +13,7 @@ import logging
 
 from .core.config import settings
 from .db.database import init_db, close_db
-from .api import auth, system, websocket, funda, properties, emails, dashboard, google_oauth
+from .api import auth, system, websocket, funda, properties, emails, dashboard, google_oauth, partner
 
 # Configure logging
 logging.basicConfig(
@@ -240,6 +240,7 @@ app.include_router(properties.router, prefix=settings.API_PREFIX)
 app.include_router(emails.router, prefix=settings.API_PREFIX)
 app.include_router(dashboard.router, prefix=settings.API_PREFIX)
 app.include_router(google_oauth.router, prefix=settings.API_PREFIX)
+app.include_router(partner.router, prefix=settings.API_PREFIX)
 
 
 # Root endpoint

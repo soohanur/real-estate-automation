@@ -103,7 +103,12 @@ class Settings(BaseSettings):
     GOOGLE_OAUTH_CLIENT_SECRET: Optional[str] = None
     GOOGLE_OAUTH_REDIRECT_URI: Optional[str] = None
     GMAIL_SENDER: Optional[str] = None
-    
+
+    # Partner API (server-to-server). The SHA-256 hex hash of the secret key
+    # given to the external partner (e.g. sons-bidding). The raw key is never
+    # stored — only this hash. Mint with scripts/mint_partner_key.py.
+    PARTNER_API_KEY_HASH: Optional[str] = None
+
     @validator("REDIS_URL", pre=True)
     def assemble_redis_connection(cls, v, values):
         if isinstance(v, str):
