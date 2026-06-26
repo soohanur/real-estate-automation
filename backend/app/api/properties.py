@@ -19,58 +19,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.database import get_db
 from ..db.models import Property
+from ..schemas.properties import PropertyOut
 from ..services import sheet_sync
+from ..services.bidding import compute_bidding
 
 router = APIRouter(prefix="/properties", tags=["Properties"])
 
 
 # ── Schemas ────────────────────────────────────────────────────
-
-class PropertyOut(BaseModel):
-    id: int
-    url: str
-    scrape_date: Optional[str] = None
-    address: Optional[str] = None
-    listed_since: Optional[str] = None
-    days_on_market: Optional[str] = None
-    asking_price: Optional[str] = None
-    woz_value: Optional[str] = None
-    suggested_bid: Optional[str] = None
-    bidding_price: Optional[str] = None
-    price_per_m2: Optional[str] = None
-    living_area: Optional[str] = None
-    plot_area: Optional[str] = None
-    rooms: Optional[str] = None
-    bedrooms: Optional[str] = None
-    construction_year: Optional[str] = None
-    property_type: Optional[str] = None
-    energy_label: Optional[str] = None
-    heating: Optional[str] = None
-    insulation: Optional[str] = None
-    maintenance_inside: Optional[str] = None
-    maintenance_outside: Optional[str] = None
-    garden: Optional[str] = None
-    garden_orientation: Optional[str] = None
-    parking: Optional[str] = None
-    vve: Optional[str] = None
-    erfpacht: Optional[str] = None
-    acceptance: Optional[str] = None
-    description: Optional[str] = None
-    images: Optional[str] = None
-    agency_name: Optional[str] = None
-    agency_phone: Optional[str] = None
-    agency_email: Optional[str] = None
-    agency_website: Optional[str] = None
-    sheet_tab: Optional[str] = None
-    email_status: Optional[str] = "not_sent"
-    notes: Optional[str] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    last_synced_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
+# PropertyOut is shared with the dashboard router → lives in schemas/.
+# The request/response models below are local to this router.
 
 class PropertyList(BaseModel):
     items: List[PropertyOut]
@@ -137,26 +95,9 @@ def _dynamic_dom(listed_since: Optional[str], fallback: Optional[str]) -> Option
     return fallback
 
 
-def _bidding_multiplier(asking_int: int) -> float:
-    """Tiered keep-fraction by asking band (1 - discount%)."""
-    if asking_int >= 500000:
-        return 0.84  # 16% off
-    if asking_int >= 400000:
-        return 0.83  # 17% off
-    if asking_int >= 300000:
-        return 0.82  # 18% off
-    return 0.80      # 20% off
-
-
 def _default_bidding(asking_price: Optional[str], current: Optional[str]) -> Optional[str]:
-    """If the user hasn't entered a bidding price, default to asking minus a
-    tiered discount by asking band:
-        < €300k  → 20% off  (×0.80)
-        €300k+   → 18% off  (×0.82)
-        €400k+   → 17% off  (×0.83)
-        €500k+   → 16% off  (×0.84)
-    AND the discount is capped at €76,000 (bidding never below asking-76000).
-    User-entered values always win.
+    """If the user hasn't entered a bidding price, default to the computed
+    bid (see services.bidding for the rule). User-entered values always win.
     """
     if current and current.strip():
         return current
@@ -171,9 +112,7 @@ def _default_bidding(asking_price: Optional[str], current: Optional[str]) -> Opt
         return current
     if asking_int <= 0:
         return current
-    tiered = round(asking_int * _bidding_multiplier(asking_int))
-    # Cap: discount never exceeds €76,000 (bidding never < asking - 76000).
-    return str(int(max(tiered, asking_int - 76000)))
+    return str(compute_bidding(asking_int))
 
 
 def _enrich_for_response(items: List["PropertyOut"]) -> None:

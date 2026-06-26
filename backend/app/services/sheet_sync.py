@@ -30,6 +30,8 @@ if str(_PROJECT_ROOT) not in sys.path:
 from funda.src.config import config  # noqa: E402
 from funda.src.modules.sheets_writer import HEADERS  # noqa: E402
 
+from .bidding import compute_bidding, bidding_formula  # noqa: E402
+
 _SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
@@ -138,10 +140,9 @@ _DIGITS_RE = re.compile(r"\d+")
 
 
 def _default_bidding_from_asking(asking_price: Optional[str]) -> Optional[str]:
-    """Compute the 20%-off default bidding price from an asking-price
-    string. Returns None when asking can't be parsed to a positive int.
-    Mirrors the read-time enrichment in properties.py so the value
-    persisted in DB matches what the dashboard already displays."""
+    """Computed default bidding price from an asking-price string (see
+    services.bidding for the rule). Returns None when asking can't be parsed
+    to a positive int."""
     if not asking_price:
         return None
     digits = _DIGITS_RE.findall(asking_price)
@@ -153,18 +154,7 @@ def _default_bidding_from_asking(asking_price: Optional[str]) -> Optional[str]:
         return None
     if asking_int <= 0:
         return None
-    # Tiered: <300k 20% | 300k+ 18% | 400k+ 17% | 500k+ 16%.
-    if asking_int >= 500000:
-        mult = 0.84
-    elif asking_int >= 400000:
-        mult = 0.83
-    elif asking_int >= 300000:
-        mult = 0.82
-    else:
-        mult = 0.80
-    tiered = round(asking_int * mult)
-    # Cap: discount never exceeds €76,000.
-    return str(int(max(tiered, asking_int - 76000)))
+    return str(compute_bidding(asking_int))
 
 
 def _batch_write_formulas_safe(
@@ -282,9 +272,7 @@ async def sync_properties(db: AsyncSession) -> Dict[str, int]:  # noqa: D401
         def _queue_formula_write():
             if not (sheet_tab and row_index and asking_present and sheet_bidding_blank):
                 return
-            formula = (
-                f'=IF({_ASK_COL}{row_index}="","",MAX(ROUND({_ASK_COL}{row_index}*IF({_ASK_COL}{row_index}>=500000,0.84,IF({_ASK_COL}{row_index}>=400000,0.83,IF({_ASK_COL}{row_index}>=300000,0.82,0.80)))),{_ASK_COL}{row_index}-76000))'
-            )
+            formula = bidding_formula(_ASK_COL, row_index)
             pending_formula_writes.setdefault(sheet_tab, []).append((row_index, formula))
 
         if url in existing:

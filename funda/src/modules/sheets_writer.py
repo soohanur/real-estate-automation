@@ -782,6 +782,9 @@ class SheetsWriter:
             return False
         ws, row_num = loc
         ask_col = 'F'  # Asking Price (€) is the 6th column.
+        # NOTE: canonical bidding rule lives in backend/app/services/bidding.py
+        # (bidding_formula). Kept inline here because the scraper package must
+        # not import the backend. Keep the two in sync if the rule changes.
         formula = f'=IF({ask_col}{row_num}="","",MAX(ROUND({ask_col}{row_num}*IF({ask_col}{row_num}>=500000,0.84,IF({ask_col}{row_num}>=400000,0.83,IF({ask_col}{row_num}>=300000,0.82,0.80)))),{ask_col}{row_num}-76000))'
         ok = self._batch_update_with_backoff(
             ws,

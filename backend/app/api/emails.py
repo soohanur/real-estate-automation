@@ -20,11 +20,10 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.config import settings
 from ..db.database import get_db
-from ..db.models import EmailMessage, GmailCredential, Property
+from ..db.models import EmailMessage, Property
 from ..services import email_sheet
-from ..services.gmail_sender import GmailSendError, send_via_gmail
+from ..services.email_service import deliver, require_gmail
 
 router = APIRouter(prefix="/emails", tags=["Emails"])
 
@@ -77,61 +76,7 @@ class EmailStats(BaseModel):
     sent_this_week: int
 
 
-# ── Send helper (shared by create + /send + /send-queued) ──────
-
-async def _deliver(db: AsyncSession, obj: EmailMessage) -> EmailMessage:
-    """Attempt to send `obj` via Gmail. Mutates status in-place
-    (sent | failed), stamps sent_at, mirrors to the linked Property,
-    and commits. If no Gmail credentials are stored the message is
-    left as-is (queued) so it can be sent later.
-
-    Never raises on a send failure — records it on the row instead so
-    a bulk flush keeps going.
-    """
-    import asyncio
-
-    sender = settings.GMAIL_SENDER
-    if not sender:
-        return obj  # not configured → leave queued
-
-    res = await db.execute(
-        select(GmailCredential).where(GmailCredential.email_address == sender)
-    )
-    cred = res.scalar_one_or_none()
-    if cred is None:
-        return obj  # not connected yet → leave queued
-
-    try:
-        # Gmail client is sync — to_thread keeps the event loop free even
-        # if Google hangs (per the post-outage hardening rules).
-        await asyncio.to_thread(
-            send_via_gmail,
-            row=cred,
-            to=obj.to_email,
-            subject=obj.subject,
-            body_text=obj.body or "",
-            body_html=obj.body_html or None,
-            cc=obj.cc_emails,
-            attachment_path=obj.attachment_path,
-        )
-        obj.status = "sent"
-        obj.error_message = None
-        obj.sent_at = datetime.utcnow()
-    except GmailSendError as e:
-        obj.status = "failed"
-        obj.error_message = str(e)[:1000]
-
-    await db.commit()
-    await db.refresh(obj)
-
-    # Mirror status back to the parent Property row.
-    if obj.property_id:
-        prop = await db.get(Property, obj.property_id)
-        if prop is not None:
-            prop.email_status = obj.status
-            await db.commit()
-
-    return obj
+# Send logic lives in services.email_service (deliver / require_gmail).
 
 
 # ── Endpoints ──────────────────────────────────────────────────
@@ -193,7 +138,7 @@ async def create_email(payload: EmailCreate, db: AsyncSession = Depends(get_db))
             await db.commit()
 
     # Send right away (no-op if Gmail not connected → stays queued).
-    await _deliver(db, obj)
+    await deliver(db, obj)
     return obj
 
 
@@ -276,25 +221,6 @@ async def get_email(email_id: int, db: AsyncSession = Depends(get_db)):
     return obj
 
 
-async def _require_gmail(db: AsyncSession) -> None:
-    """Raise a clear 400 if Gmail isn't connected, so manual send actions
-    get an explanatory error rather than a silent no-op."""
-    sender = settings.GMAIL_SENDER
-    if not sender:
-        raise HTTPException(status_code=500, detail="GMAIL_SENDER not configured")
-    res = await db.execute(
-        select(GmailCredential).where(GmailCredential.email_address == sender)
-    )
-    if res.scalar_one_or_none() is None:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"No Gmail credentials stored for {sender}. "
-                "Click Connect Gmail and complete the OAuth flow first."
-            ),
-        )
-
-
 @router.post("/{email_id}/send", response_model=EmailOut)
 async def send_email_now(email_id: int, db: AsyncSession = Depends(get_db)):
     """Send a single queued/failed email via Gmail now."""
@@ -303,8 +229,8 @@ async def send_email_now(email_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Email not found")
     if obj.status == "sent":
         return obj  # idempotent
-    await _require_gmail(db)
-    return await _deliver(db, obj)
+    await require_gmail(db)
+    return await deliver(db, obj)
 
 
 class SendQueuedResult(BaseModel):
@@ -317,7 +243,7 @@ class SendQueuedResult(BaseModel):
 async def send_all_queued(db: AsyncSession = Depends(get_db)) -> SendQueuedResult:
     """Flush the backlog: send every queued (and previously failed) email.
     Sent sequentially so one Gmail rate-limit doesn't stampede the API."""
-    await _require_gmail(db)
+    await require_gmail(db)
     r = await db.execute(
         select(EmailMessage)
         .where(EmailMessage.status.in_(["queued", "failed"]))
@@ -326,7 +252,7 @@ async def send_all_queued(db: AsyncSession = Depends(get_db)) -> SendQueuedResul
     pending = r.scalars().all()
     sent = failed = 0
     for obj in pending:
-        await _deliver(db, obj)
+        await deliver(db, obj)
         if obj.status == "sent":
             sent += 1
         else:

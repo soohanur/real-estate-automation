@@ -17,9 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.database import get_db
 from ..db.models import EmailMessage, Property
-# Reuse the canonical PropertyOut so dashboard's latest_scrapes carries
-# every column the Global Data table renders — no field drift.
-from .properties import PropertyOut
+# Shared PropertyOut so dashboard's latest_scrapes carries every column the
+# Global Data table renders — no field drift, and no router→router import.
+from ..schemas.properties import PropertyOut
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
