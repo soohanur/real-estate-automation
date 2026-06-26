@@ -39,3 +39,6 @@ build/
 
 # Dead Svelte frontend backup (kept locally, out of repo)
 frontend.svelte.backup-*/
+
+# Partner delivery doc — contains the real API key, NEVER commit
+PARTNER_API_DELIVERY*.md

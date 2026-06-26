@@ -96,6 +96,29 @@ if (res.ok) {
 }
 ```
 
+**FastAPI (your backend)**
+```python
+import os
+import httpx
+from fastapi import FastAPI, HTTPException
+
+app = FastAPI()
+FUNDA_URL = "https://sons.business/api/v1/partner/property"
+FUNDA_API_KEY = os.environ["FUNDA_API_KEY"]   # set in server env, not in code
+
+@app.get("/property")
+async def property_lookup(postcode: str, house_number: str):
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(
+            FUNDA_URL,
+            params={"postcode": postcode, "house_number": house_number},
+            headers={"Authorization": f"Bearer {FUNDA_API_KEY}"},
+        )
+    if resp.status_code == 200:
+        return resp.json()          # {"address", "dom", "asking_price"}
+    raise HTTPException(resp.status_code, resp.text)
+```
+
 **Python (requests)**
 ```python
 import os, requests
