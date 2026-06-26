@@ -41,4 +41,5 @@ build/
 frontend.svelte.backup-*/
 
 # Partner delivery doc — contains the real API key, NEVER commit
-PARTNER_API_DELIVERY*.md
+*PARTNER_API_DELIVERY*.md
+FUNDA_PARTNER_API_DELIVERY*.md
