@@ -14,7 +14,7 @@ Usage:
 import hashlib
 import secrets
 
-key = "sk_live_" + secrets.token_urlsafe(32)
+key = "funda_" + secrets.token_urlsafe(32)
 key_hash = hashlib.sha256(key.encode()).hexdigest()
 
 print("=" * 70)
