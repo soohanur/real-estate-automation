@@ -194,11 +194,9 @@ async def oauth_callback(
     await db.commit()
 
     logger.info(f"Gmail OAuth: {action} credentials for {email}")
-    return HTMLResponse(
-        f"<h1>Gmail connected ✓</h1>"
-        f"<p>Authorised <b>{email}</b> for sending. You can close this tab "
-        f"and return to the dashboard.</p>"
-    )
+    # Bounce straight back into the admin panel (chat inbox) — no dead-end page.
+    base = (settings.frontend_url or "").rstrip("/")
+    return RedirectResponse(f"{base}/emails?gmail=connected", status_code=302)
 
 
 @router.get("/status")

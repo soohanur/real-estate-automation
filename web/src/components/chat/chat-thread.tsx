@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, FileText, Loader2 } from "lucide-react";
+import { ArrowLeft, ExternalLink, FileText, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   conversationsApi,
@@ -91,6 +92,7 @@ export function ChatThread({
     messages.find((m) => m.direction === "outbound")?.to_email ||
     "";
   const subject = messages[messages.length - 1]?.subject ?? "";
+  const propertyId = messages.find((m) => m.property_id)?.property_id ?? null;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -105,12 +107,28 @@ export function ChatThread({
             <ArrowLeft className="h-4 w-4" />
           </button>
         )}
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{counterpart || "Conversation"}</div>
-          {subject && (
-            <div className="truncate text-xs text-[var(--muted-foreground)]">{subject}</div>
-          )}
-        </div>
+        {propertyId ? (
+          <Link
+            href={`/data/${propertyId}`}
+            className="group min-w-0 flex-1 rounded-lg px-1 py-0.5 hover:bg-[var(--muted)]"
+            title="Open property details"
+          >
+            <div className="flex items-center gap-1.5">
+              <span className="truncate text-sm font-semibold">{counterpart || "Conversation"}</span>
+              <ExternalLink className="h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover:opacity-100" />
+            </div>
+            {subject && (
+              <div className="truncate text-xs text-[var(--muted-foreground)]">{subject}</div>
+            )}
+          </Link>
+        ) : (
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold">{counterpart || "Conversation"}</div>
+            {subject && (
+              <div className="truncate text-xs text-[var(--muted-foreground)]">{subject}</div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* messages */}

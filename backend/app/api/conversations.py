@@ -60,6 +60,7 @@ class ConversationList(BaseModel):
 
 class MessageOut(BaseModel):
     id: int
+    property_id: Optional[int] = None
     direction: str
     from_email: Optional[str] = None
     to_email: str
@@ -73,6 +74,26 @@ class MessageOut(BaseModel):
 
 
 # ── Helpers ────────────────────────────────────────────────────
+
+def _text_to_html(text: str) -> str:
+    """Wrap a plain-text reply in a clean, email-client-safe HTML body so the
+    recipient sees formatted text (not a broken/blank message). Escapes the
+    text, converts newlines to <br>, links bare URLs."""
+    import html as _html
+    import re as _re
+
+    safe = _html.escape(text or "")
+    safe = _re.sub(
+        r"(https?://[^\s<]+)",
+        r'<a href="\1" style="color:#1a56db;">\1</a>',
+        safe,
+    )
+    safe = safe.replace("\n", "<br>")
+    return (
+        '<div style="font-family:Helvetica,Arial,sans-serif;font-size:14px;'
+        'line-height:1.6;color:#0a0a0a;">' + safe + "</div>"
+    )
+
 
 def _preview(msg: EmailMessage) -> str:
     txt = (msg.body or "").strip()
@@ -198,9 +219,9 @@ async def thread_messages(thread_id: str, db: AsyncSession = Depends(get_db)):
         )
     return {"items": [
         MessageOut(
-            id=m.id, direction=m.direction or "outbound", from_email=m.from_email,
-            to_email=m.to_email, subject=m.subject, body=m.body, body_html=m.body_html,
-            is_read=bool(m.is_read), attachments=by_email.get(m.id, []),
+            id=m.id, property_id=m.property_id, direction=m.direction or "outbound",
+            from_email=m.from_email, to_email=m.to_email, subject=m.subject, body=m.body,
+            body_html=m.body_html, is_read=bool(m.is_read), attachments=by_email.get(m.id, []),
             sent_at=m.sent_at, created_at=m.created_at,
         ) for m in rows
     ]}
@@ -244,13 +265,17 @@ async def reply(
     if not subject.lower().startswith("re:"):
         subject = f"Re: {subject}"
 
+    # Always send an HTML part so the reply renders cleanly on the agency side
+    # (plain-text-only replies looked broken next to the branded original).
+    html_body = body_html or _text_to_html(body)
+
     obj = EmailMessage(
         property_id=latest.property_id,
         property_url=latest.property_url,
         to_email=to,
         subject=subject,
         body=body,
-        body_html=body_html,
+        body_html=html_body,
         status="queued",
         direction="outbound",
         gmail_thread_id=thread_id,
@@ -287,7 +312,8 @@ async def reply(
         select(EmailAttachment).where(EmailAttachment.email_id == obj.id)
     )).scalars().all()
     return MessageOut(
-        id=obj.id, direction="outbound", from_email=obj.from_email, to_email=obj.to_email,
+        id=obj.id, property_id=obj.property_id, direction="outbound",
+        from_email=obj.from_email, to_email=obj.to_email,
         subject=obj.subject, body=obj.body, body_html=obj.body_html, is_read=True,
         attachments=[AttachmentOut(id=a.id, filename=a.filename, mime_type=a.mime_type, size=a.size) for a in atts],
         sent_at=obj.sent_at, created_at=obj.created_at,

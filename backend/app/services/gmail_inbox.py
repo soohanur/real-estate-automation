@@ -30,6 +30,21 @@ from .gmail_sender import _credentials_from_row, _refresh_if_needed
 logger = logging.getLogger(__name__)
 
 # ── HTML sanitization (prefer bleach; fall back to a basic strip) ──
+# Tags whose *inner text* must also be dropped — bleach strip=True keeps the
+# text content of stripped tags, so a bare <style> dumps raw CSS into the chat
+# bubble (the "renders as bold… body { width:100% }" leak). Kill these blocks
+# wholesale before bleach runs.
+_DROP_BLOCKS = re.compile(r"(?is)<(style|script|head|title)\b[^>]*>.*?</\1\s*>")
+_DROP_ORPHAN = re.compile(r"(?is)</?(style|script|head|title)\b[^>]*>")
+
+
+def _pre_strip(html: str) -> str:
+    html = html or ""
+    html = _DROP_BLOCKS.sub("", html)
+    html = _DROP_ORPHAN.sub("", html)
+    return html
+
+
 try:
     import bleach
 
@@ -42,13 +57,11 @@ try:
     _ALLOWED_ATTRS = {"a": ["href", "title"], "img": ["src", "alt"], "*": ["style"]}
 
     def sanitize_html(html: str) -> str:
-        return bleach.clean(html or "", tags=_ALLOWED_TAGS, attributes=_ALLOWED_ATTRS,
+        return bleach.clean(_pre_strip(html), tags=_ALLOWED_TAGS, attributes=_ALLOWED_ATTRS,
                             protocols=["http", "https", "mailto", "cid", "data"], strip=True)
 except Exception:  # bleach not installed → conservative strip
     def sanitize_html(html: str) -> str:
-        html = html or ""
-        html = re.sub(r"(?is)<script.*?>.*?</script>", "", html)
-        html = re.sub(r"(?is)<style.*?>.*?</style>", "", html)
+        html = _pre_strip(html)
         html = re.sub(r'(?i)\son\w+\s*=\s*"[^"]*"', "", html)
         html = re.sub(r"(?i)\son\w+\s*=\s*'[^']*'", "", html)
         html = re.sub(r"(?i)javascript:", "", html)
