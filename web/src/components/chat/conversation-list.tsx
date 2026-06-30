@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
-import { Search } from "lucide-react";
 import { conversationsApi, type Conversation } from "@/lib/api/conversations";
 import { cn } from "@/lib/utils";
 
@@ -34,15 +33,12 @@ export function ConversationList({
   return (
     <div className="flex h-full flex-col">
       <div className="shrink-0 border-b border-[var(--border)] p-3">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search conversations…"
-            className="input h-9 w-full pl-9 text-sm"
-          />
-        </div>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search conversations…"
+          className="input h-9 w-full text-sm"
+        />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
