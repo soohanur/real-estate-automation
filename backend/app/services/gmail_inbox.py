@@ -16,7 +16,7 @@ import base64
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from email.utils import parseaddr, parsedate_to_datetime
 
 from googleapiclient.discovery import build
@@ -145,6 +145,12 @@ def fetch_message(service, msg_id) -> dict:
     try:
         dt = parsedate_to_datetime(headers.get("date")) if headers.get("date") else None
         if dt is not None:
+            # Normalize to UTC before going naive, so inbound timestamps sort
+            # correctly against our outbound utcnow() values (the email Date
+            # header carries the sender's TZ; stripping tzinfo without
+            # converting left a multi-hour skew → replies "jumped" up).
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(timezone.utc)
             dt = dt.replace(tzinfo=None)
     except Exception:
         dt = None

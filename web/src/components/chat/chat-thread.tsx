@@ -168,10 +168,12 @@ function MessageBubble({ m }: { m: ConversationMessage }) {
             : "rounded-bl-sm border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)]",
         )}
       >
-        {m.body_html ? (
+        {!out && m.body_html ? (
+          // Inbound HTML is sanitized server-side; render it rich. Outbound is
+          // shown as plain text so it stays white/readable on the blue bubble
+          // (the sent email still carries our HTML — that's separate).
           <div
-            className={cn("chat-html break-words", out && "text-white")}
-            // inbound HTML is sanitized server-side; outbound is our own template
+            className="chat-html break-words"
             dangerouslySetInnerHTML={{ __html: m.body_html }}
           />
         ) : (
