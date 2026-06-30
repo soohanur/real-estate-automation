@@ -109,6 +109,14 @@ class Settings(BaseSettings):
     # stored — only this hash. Mint with scripts/mint_partner_key.py.
     PARTNER_API_KEY_HASH: Optional[str] = None
 
+    # Email chat inbox — where inbound/outbound attachment bytes are stored,
+    # and the per-file size cap. (Project-root/var/attachments; BASE_DIR is
+    # defined later in this class so compute the path directly here.)
+    ATTACHMENTS_DIR: str = str(
+        Path(__file__).resolve().parent.parent.parent.parent / "var" / "attachments"
+    )
+    MAX_ATTACHMENT_MB: int = 25
+
     @validator("REDIS_URL", pre=True)
     def assemble_redis_connection(cls, v, values):
         if isinstance(v, str):

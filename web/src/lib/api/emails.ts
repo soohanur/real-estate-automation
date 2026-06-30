@@ -52,6 +52,7 @@ export type GmailStatus = {
   email_address?: string | null;
   last_updated?: string | null;
   reason?: string | null;
+  read_enabled?: boolean; // true once reconnected with gmail.readonly (chat inbox)
 };
 
 export const emailsApi = {

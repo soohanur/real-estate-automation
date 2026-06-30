@@ -13,7 +13,7 @@ import logging
 
 from .core.config import settings
 from .db.database import init_db, close_db
-from .api import auth, system, websocket, funda, properties, emails, dashboard, google_oauth, partner
+from .api import auth, system, websocket, funda, properties, emails, dashboard, google_oauth, partner, conversations
 
 # Configure logging
 logging.basicConfig(
@@ -136,12 +136,43 @@ async def lifespan(app: FastAPI):
     auto_sync_task = _asyncio.create_task(_auto_sync_loop())
     logger.info("✓ Background Sheet→DB auto-sync started (30s interval)")
 
+    # ── Background Gmail inbox poll (chat inbox) ───────────────────
+    # Fetches agency replies into the DB every 30s. No-ops until the
+    # mailbox is reconnected with gmail.readonly scope.
+    from .services.gmail_inbox import poll_inbox
+
+    async def _inbox_poll_loop():
+        ITER_TIMEOUT_SEC = 120
+        await _asyncio.sleep(15)
+        while True:
+            try:
+                async def _run_once():
+                    async with AsyncSessionLocal() as session:
+                        return await poll_inbox(session)
+
+                res = await _asyncio.wait_for(_run_once(), timeout=ITER_TIMEOUT_SEC)
+                if res.get("inserted"):
+                    logger.info(f"Inbox poll: +{res['inserted']} inbound message(s)")
+            except _asyncio.TimeoutError:
+                logger.warning(f"Inbox poll exceeded {ITER_TIMEOUT_SEC}s — aborted, will retry")
+            except Exception as e:
+                logger.warning(f"Inbox poll iteration failed: {e}")
+            await _asyncio.sleep(30)
+
+    inbox_task = _asyncio.create_task(_inbox_poll_loop())
+    logger.info("✓ Background Gmail inbox poll started (30s interval)")
+
     yield
 
     # Shutdown
     auto_sync_task.cancel()
+    inbox_task.cancel()
     try:
         await auto_sync_task
+    except (_asyncio.CancelledError, Exception):
+        pass
+    try:
+        await inbox_task
     except (_asyncio.CancelledError, Exception):
         pass
     logger.info("Shutting down Automation Platform API...")
@@ -241,6 +272,7 @@ app.include_router(emails.router, prefix=settings.API_PREFIX)
 app.include_router(dashboard.router, prefix=settings.API_PREFIX)
 app.include_router(google_oauth.router, prefix=settings.API_PREFIX)
 app.include_router(partner.router, prefix=settings.API_PREFIX)
+app.include_router(conversations.router, prefix=settings.API_PREFIX)
 
 
 # Root endpoint

@@ -55,3 +55,4 @@ pydantic-extra-types==2.4.1
 DrissionPage==4.1.1.2
 gspread==6.2.1
 google-auth==2.49.0
+bleach

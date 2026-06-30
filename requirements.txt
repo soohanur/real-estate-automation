@@ -14,3 +14,4 @@ colorama==0.4.6
 
 # Optional: Alternative browser automation
 # playwright==1.40.0
+bleach

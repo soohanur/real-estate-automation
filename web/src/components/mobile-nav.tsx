@@ -9,6 +9,7 @@
  */
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   Building2,
@@ -16,6 +17,7 @@ import {
   Mail,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { conversationsApi } from "@/lib/api/conversations";
 
 const TABS = [
   { href: "/dashboard", label: "Home",    icon: LayoutDashboard },
@@ -26,6 +28,12 @@ const TABS = [
 
 export function MobileNav() {
   const pathname = usePathname();
+  const { data: unread } = useQuery({
+    queryKey: ["conversations", "unread"],
+    queryFn: conversationsApi.unreadCount,
+    refetchInterval: 30_000,
+  });
+  const unreadCount = unread?.unread ?? 0;
   return (
     <nav
       aria-label="Primary"
@@ -50,11 +58,16 @@ export function MobileNav() {
               >
                 <span
                   className={cn(
-                    "grid h-9 w-12 place-items-center rounded-2xl",
+                    "relative grid h-9 w-12 place-items-center rounded-2xl",
                     active && "bg-[var(--color-brand-50)]",
                   )}
                 >
                   <Icon className="h-5 w-5" />
+                  {t.href === "/emails" && unreadCount > 0 && (
+                    <span className="absolute right-1.5 top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--color-brand-600)] px-1 text-[9px] font-bold text-white">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
                 </span>
                 <span>{t.label}</span>
               </Link>

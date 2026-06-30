@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
-from ..db.models import EmailMessage, GmailCredential, Property
+from ..db.models import EmailAttachment, EmailMessage, GmailCredential, Property
 from .gmail_sender import GmailSendError, send_via_gmail
 
 
@@ -39,10 +39,18 @@ async def deliver(db: AsyncSession, obj: EmailMessage) -> EmailMessage:
     if cred is None:
         return obj  # not connected yet → leave queued
 
+    # Gather any attachment file paths queued on this message (query, not the
+    # lazy relationship — lazy loads aren't allowed in async context).
+    att_rows = await db.execute(
+        select(EmailAttachment.storage_path).where(EmailAttachment.email_id == obj.id)
+    )
+    att_paths = [p for p in att_rows.scalars().all() if p]
+
     try:
         # Gmail client is sync — to_thread keeps the event loop free even if
-        # Google hangs (per the post-outage hardening rules).
-        await asyncio.to_thread(
+        # Google hangs (per the post-outage hardening rules). Thread-aware:
+        # when this is a reply, obj.gmail_thread_id / obj.in_reply_to are set.
+        resp = await asyncio.to_thread(
             send_via_gmail,
             row=cred,
             to=obj.to_email,
@@ -51,10 +59,19 @@ async def deliver(db: AsyncSession, obj: EmailMessage) -> EmailMessage:
             body_html=obj.body_html or None,
             cc=obj.cc_emails,
             attachment_path=obj.attachment_path,
+            attachments=att_paths,
+            thread_id=obj.gmail_thread_id,
+            in_reply_to=obj.in_reply_to,
         )
         obj.status = "sent"
         obj.error_message = None
         obj.sent_at = datetime.utcnow()
+        obj.direction = "outbound"
+        obj.from_email = cred.email_address
+        obj.is_read = True
+        obj.gmail_message_id = resp.get("id")
+        obj.gmail_thread_id = resp.get("threadId") or obj.gmail_thread_id
+        obj.rfc_message_id = resp.get("rfc_message_id")
     except GmailSendError as e:
         obj.status = "failed"
         obj.error_message = str(e)[:1000]

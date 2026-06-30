@@ -259,17 +259,51 @@ class EmailMessage(Base):
     body_html = Column(Text)       # HTML part — preferred when sending
     attachment_path = Column(String)
 
-    status = Column(String, default="queued", index=True)  # queued|sent|failed
+    status = Column(String, default="queued", index=True)  # queued|sent|failed|received
     error_message = Column(Text)
+
+    # ── Chat-inbox threading (Gmail) ──────────────────────────
+    direction = Column(String, default="outbound", index=True)  # outbound | inbound
+    from_email = Column(String, index=True)        # sender (us=outbound, agency=inbound)
+    gmail_message_id = Column(String, unique=True, index=True)   # Gmail API id (dedup key)
+    gmail_thread_id = Column(String, index=True)   # conversation key
+    rfc_message_id = Column(String, index=True)    # RFC822 Message-ID header
+    in_reply_to = Column(String)                   # RFC822 Message-ID this replies to
+    is_read = Column(Boolean, default=True, index=True)  # inbound rows inserted False
 
     sent_at = Column(DateTime, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     property = relationship("Property", back_populates="emails")
+    attachments = relationship(
+        "EmailAttachment", back_populates="email", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<EmailMessage to={self.to_email} status={self.status}>"
+
+
+class EmailAttachment(Base):
+    """A file attached to an email (inbound: downloaded from Gmail; outbound:
+    uploaded in the reply composer). Bytes live on disk under ATTACHMENTS_DIR;
+    this row is the metadata + path."""
+    __tablename__ = "email_attachments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email_id = Column(Integer, ForeignKey("email_messages.id"), nullable=False, index=True)
+    filename = Column(String, nullable=False)
+    mime_type = Column(String)
+    size = Column(Integer)
+    storage_path = Column(String)        # absolute path on disk
+    gmail_attachment_id = Column(String) # Gmail attachment id (inbound)
+    direction = Column(String, default="outbound")  # inbound | outbound
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    email = relationship("EmailMessage", back_populates="attachments")
+
+    def __repr__(self):
+        return f"<EmailAttachment {self.filename} email={self.email_id}>"
 
 
 class GmailCredential(Base):
@@ -288,6 +322,7 @@ class GmailCredential(Base):
     client_id = Column(String)
     client_secret = Column(String)
     token_uri = Column(String, default="https://oauth2.googleapis.com/token")
+    last_history_id = Column(String)  # Gmail historyId watermark for inbox polling
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

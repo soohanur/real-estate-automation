@@ -282,3 +282,10 @@ select.input {
     animation-duration: 0ms !important;
   }
 }
+
+/* Inbound HTML email bodies inside chat bubbles — keep them contained. */
+.chat-html { font-size: 0.875rem; line-height: 1.5; }
+.chat-html img { max-width: 100%; height: auto; border-radius: 6px; }
+.chat-html a { text-decoration: underline; }
+.chat-html table { max-width: 100%; }
+.chat-html * { max-width: 100%; }
