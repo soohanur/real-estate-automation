@@ -34,7 +34,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth/google", tags=["Google OAuth"])
 
-_SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
+_SCOPES = [
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.readonly",  # read inbox for the chat inbox
+]
 
 
 def _client_config() -> dict:
@@ -206,8 +209,12 @@ async def oauth_status(db: AsyncSession = Depends(get_db)):
         return {"connected": False, "reason": "GMAIL_SENDER env var not set"}
     res = await db.execute(select(GmailCredential).where(GmailCredential.email_address == sender))
     row = res.scalar_one_or_none()
+    read_enabled = bool(row and row.scopes and "gmail.readonly" in row.scopes)
     return {
         "connected": row is not None,
         "email_address": sender,
         "last_updated": row.updated_at.isoformat() if row else None,
+        # True once the mailbox is reconnected with read access (needed to
+        # receive replies in the chat inbox).
+        "read_enabled": read_enabled,
     }

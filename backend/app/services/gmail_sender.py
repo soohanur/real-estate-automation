@@ -48,6 +48,22 @@ def _refresh_if_needed(creds: Credentials) -> bool:
     return False
 
 
+def _attach_file(msg: "_MimeMessage", path: str) -> None:
+    import mimetypes
+    import os
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+        mtype, _ = mimetypes.guess_type(path)
+        maintype, subtype = (mtype or "application/octet-stream").split("/", 1)
+        msg.add_attachment(
+            data, maintype=maintype, subtype=subtype,
+            filename=os.path.basename(path),
+        )
+    except Exception as e:
+        logger.warning(f"Attachment skipped ({path}): {e}")
+
+
 def send_via_gmail(
     *,
     row: GmailCredential,
@@ -57,14 +73,23 @@ def send_via_gmail(
     body_html: Optional[str] = None,
     cc: Optional[str] = None,
     attachment_path: Optional[str] = None,
+    attachments: Optional[list] = None,
+    thread_id: Optional[str] = None,
+    in_reply_to: Optional[str] = None,
+    references: Optional[str] = None,
 ) -> dict:
     """Send a single message via Gmail API.
 
-    Returns Gmail's response dict (contains 'id', 'threadId') on
-    success; raises GmailSendError on any failure.
+    Returns {'id', 'threadId', 'rfc_message_id'} on success; raises
+    GmailSendError on any failure.
 
-    Caller is responsible for invoking this in a thread (e.g.
-    asyncio.to_thread) since googleapiclient is synchronous.
+    Threading: pass `thread_id` to keep a reply in the same Gmail
+    conversation, and `in_reply_to` / `references` (RFC822 Message-IDs) so
+    mail clients thread it. `attachments` is a list of file paths (the
+    legacy single `attachment_path` still works).
+
+    Caller must invoke this in a thread (asyncio.to_thread) — googleapiclient
+    is synchronous.
     """
     creds = _credentials_from_row(row)
     refreshed = False
@@ -80,48 +105,52 @@ def send_via_gmail(
     if cc:
         msg["Cc"] = cc
     msg["Subject"] = subject
+    if in_reply_to:
+        msg["In-Reply-To"] = in_reply_to
+        msg["References"] = references or in_reply_to
     if body_html:
         msg.set_content(body_text or "")
         msg.add_alternative(body_html, subtype="html")
     else:
         msg.set_content(body_text or "")
 
-    if attachment_path:
-        try:
-            with open(attachment_path, "rb") as f:
-                data = f.read()
-            # Best-effort MIME type — Gmail API accepts octet-stream too
-            import mimetypes
-            mtype, _ = mimetypes.guess_type(attachment_path)
-            maintype, subtype = (mtype or "application/octet-stream").split("/", 1)
-            import os
-            msg.add_attachment(
-                data,
-                maintype=maintype,
-                subtype=subtype,
-                filename=os.path.basename(attachment_path),
-            )
-        except Exception as e:
-            logger.warning(f"Attachment skipped ({attachment_path}): {e}")
+    for path in ([attachment_path] if attachment_path else []) + list(attachments or []):
+        if path:
+            _attach_file(msg, path)
 
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii")
+    send_body = {"raw": raw}
+    if thread_id:
+        send_body["threadId"] = thread_id
 
     service = build("gmail", "v1", credentials=creds, cache_discovery=False)
     try:
-        resp = service.users().messages().send(
-            userId="me",
-            body={"raw": raw},
-        ).execute()
+        resp = service.users().messages().send(userId="me", body=send_body).execute()
     except Exception as e:
         raise GmailSendError(f"Gmail API send failed: {e}") from e
 
-    # Persist refreshed token + new expiry back to caller's row (caller
-    # owns the SQLAlchemy session; we just mutate the object).
+    # Read back the RFC822 Message-ID Gmail assigned (needed to thread future
+    # replies). Requires gmail.readonly — null gracefully if not granted yet.
+    rfc_message_id = None
+    try:
+        meta = service.users().messages().get(
+            userId="me", id=resp["id"], format="metadata",
+            metadataHeaders=["Message-ID"],
+        ).execute()
+        for h in meta.get("payload", {}).get("headers", []):
+            if h.get("name", "").lower() == "message-id":
+                rfc_message_id = h.get("value")
+                break
+    except Exception as e:
+        logger.debug(f"Message-ID readback unavailable (need readonly?): {e}")
+
+    # Persist refreshed token + new expiry back to caller's row.
     if refreshed:
         row.access_token = creds.token
         row.token_expiry = creds.expiry
 
-    return resp
+    return {"id": resp.get("id"), "threadId": resp.get("threadId"),
+            "rfc_message_id": rfc_message_id}
 
 
-__all__ = ["send_via_gmail", "GmailSendError"]
+__all__ = ["send_via_gmail", "GmailSendError", "_credentials_from_row", "_refresh_if_needed"]

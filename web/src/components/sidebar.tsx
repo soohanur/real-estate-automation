@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   Menu,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
+import { conversationsApi } from "@/lib/api/conversations";
 
 const items = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -31,6 +33,12 @@ export function Sidebar({
   const router = useRouter();
   const user = useAuth((s) => s.user);
   const logout = useAuth((s) => s.logout);
+  const { data: unread } = useQuery({
+    queryKey: ["conversations", "unread"],
+    queryFn: conversationsApi.unreadCount,
+    refetchInterval: 30_000,
+  });
+  const unreadCount = unread?.unread ?? 0;
 
   return (
     <aside
@@ -77,8 +85,24 @@ export function Sidebar({
                         : "text-[var(--foreground)] hover:bg-[var(--muted)]"
                     )}
                   >
-                    <Icon className={cn("h-5 w-5 shrink-0", active && "text-[var(--color-brand-600)]")} />
-                    {!collapsed && <span>{it.label}</span>}
+                    <span className="relative shrink-0">
+                      <Icon className={cn("h-5 w-5", active && "text-[var(--color-brand-600)]")} />
+                      {it.href === "/emails" && unreadCount > 0 && (
+                        <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-[var(--color-brand-600)] px-1 text-[9px] font-bold text-white">
+                          {unreadCount > 99 ? "99+" : unreadCount}
+                        </span>
+                      )}
+                    </span>
+                    {!collapsed && (
+                      <span className="flex flex-1 items-center justify-between">
+                        {it.label}
+                        {it.href === "/emails" && unreadCount > 0 && (
+                          <span className="grid h-5 min-w-5 place-items-center rounded-full bg-[var(--color-brand-600)] px-1.5 text-[10px] font-bold text-white">
+                            {unreadCount > 99 ? "99+" : unreadCount}
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </Link>
                 </li>
               );
