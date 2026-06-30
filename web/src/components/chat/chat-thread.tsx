@@ -138,7 +138,7 @@ export function ChatThread({
             <Loader2 className="h-5 w-5 animate-spin" />
           </div>
         ) : (
-          <div className="mx-auto flex max-w-3xl flex-col gap-2">
+          <div className="flex flex-col gap-2">
             {messages.map((m) => (
               <MessageBubble key={m.id} m={m} />
             ))}

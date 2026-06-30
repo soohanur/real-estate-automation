@@ -61,9 +61,9 @@ export function ConversationList({
                 type="button"
                 onClick={() => onSelect(c.thread_id)}
                 className={cn(
-                  "flex w-full items-center gap-3 border-b border-[var(--border)] border-l-2 border-l-transparent px-3 py-3 text-left transition-colors hover:bg-[var(--surface-2)]",
+                  "flex w-full items-center gap-3 border-b border-[var(--border)] border-l-2 border-l-transparent px-3 py-3 text-left transition-colors hover:bg-[var(--muted)]",
                   active &&
-                    "border-l-[var(--color-brand-500)] bg-[var(--color-brand-50)] dark:bg-[var(--color-brand-900)]/30",
+                    "border-l-[var(--color-brand-500)] bg-[color-mix(in_srgb,var(--color-brand-500)_15%,transparent)]",
                 )}
               >
                 <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--surface-2)] text-sm font-semibold text-[var(--color-brand-700)]">
