@@ -13,7 +13,7 @@
 import type { Property } from "./api/properties";
 
 const SENDER_NAME = "Direct Verkocht Met Zekerheid";
-const SENDER_PHONE = "085-2082323";
+const SENDER_PHONE = "(085) 888 0237";
 
 // Brand palette — deep teal reads as trust/certainty ("zekerheid") and stays
 // legible against the neutral slate body text.
