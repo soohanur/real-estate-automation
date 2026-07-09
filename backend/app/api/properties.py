@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import BigInteger, and_, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.database import get_db
@@ -127,7 +127,8 @@ def _apply_filters(stmt, *, q: Optional[str], email_status: Optional[str],
                    agency_name: Optional[str], days_back: Optional[int],
                    sheet_tab: Optional[str],
                    dom_min: Optional[int] = None,
-                   dom_max: Optional[int] = None):
+                   dom_max: Optional[int] = None,
+                   below_woz: Optional[bool] = None):
     if q:
         like = f"%{q}%"
         stmt = stmt.where(
@@ -166,6 +167,16 @@ def _apply_filters(stmt, *, q: Optional[str], email_status: Optional[str],
         stmt = stmt.where(Property.listed_since >= cutoff_new)
         stmt = stmt.where(Property.listed_since != "")
         stmt = stmt.where(Property.listed_since.is_not(None))
+    # Undervalued: asking price below the WOZ valuation. Both columns are
+    # varchar, so guard with a digits-only regex before casting — rows with
+    # blank/formatted values are excluded rather than blowing up the cast.
+    if below_woz:
+        digits = r"^[0-9]+$"
+        stmt = stmt.where(
+            Property.asking_price.op("~")(digits),
+            Property.woz_value.op("~")(digits),
+            cast(Property.asking_price, BigInteger) < cast(Property.woz_value, BigInteger),
+        )
     return stmt
 
 
@@ -183,6 +194,7 @@ async def list_properties(
     sheet_tab: Optional[str] = Query(None),
     dom_min: Optional[int] = Query(None, ge=0, le=3650, description="min days-on-market (inclusive)"),
     dom_max: Optional[int] = Query(None, ge=0, le=3650, description="max days-on-market (inclusive)"),
+    below_woz: Optional[bool] = Query(None, description="only properties whose asking price is below the WOZ value"),
     sort: str = Query("created_at"),
     order: str = Query("asc", pattern="^(asc|desc)$"),
     # Cap raised so the dashboard table can render every row in one
@@ -206,6 +218,7 @@ async def list_properties(
         q=q, email_status=email_status, property_type=property_type,
         energy_label=energy_label, agency_name=agency_name, days_back=days_back,
         sheet_tab=sheet_tab, dom_min=dom_min, dom_max=dom_max,
+        below_woz=below_woz,
     )
 
     # Count.
@@ -214,6 +227,7 @@ async def list_properties(
         q=q, email_status=email_status, property_type=property_type,
         energy_label=energy_label, agency_name=agency_name, days_back=days_back,
         sheet_tab=sheet_tab, dom_min=dom_min, dom_max=dom_max,
+        below_woz=below_woz,
     )
     total = (await db.execute(count_stmt)).scalar_one()
 

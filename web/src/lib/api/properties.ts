@@ -67,6 +67,8 @@ export type ListParams = {
   dom_min?: number;
   /** Filter: maximum days-on-market (inclusive). */
   dom_max?: number;
+  /** Filter: only properties whose asking price is below the WOZ value. */
+  below_woz?: boolean;
   sort?: string;
   order?: "asc" | "desc";
   limit?: number;

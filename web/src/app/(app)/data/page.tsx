@@ -6,7 +6,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, TrendingDown } from "lucide-react";
 import { toast } from "sonner";
 import {
   propertiesApi,
@@ -17,7 +17,7 @@ import {
 import { PageContainer } from "@/components/page-container";
 import { EmailModal } from "@/components/email-modal";
 import { PropertiesTable } from "@/components/properties-table";
-import { formatNumber } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 
 // Infinite scroll: page size = 30 rows. Tiny pages keep first paint
 // near-instant and the fetch cadence smooth as the user scrolls.
@@ -46,7 +46,7 @@ const DOM_PRESETS = [
 
 type Filters = Pick<
   ListParams,
-  "q" | "sheet_tab" | "email_status" | "sort" | "order" | "dom_min" | "dom_max"
+  "q" | "sheet_tab" | "email_status" | "sort" | "order" | "dom_min" | "dom_max" | "below_woz"
 >;
 
 export default function DataPage() {
@@ -239,6 +239,25 @@ export default function DataPage() {
             </option>
           ))}
         </select>
+
+        {/* Undervalued: asking price < WOZ valuation. Rows with a blank or
+            non-numeric asking/WOZ are excluded by the backend. */}
+        <button
+          type="button"
+          onClick={() =>
+            setFilters((f) => ({ ...f, below_woz: f.below_woz ? undefined : true }))
+          }
+          title="Show only properties whose asking price is below the WOZ valuation"
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+            filters.below_woz
+              ? "border-transparent bg-[var(--color-brand-600)] text-white"
+              : "border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--muted)]",
+          )}
+        >
+          <TrendingDown className="h-4 w-4" />
+          Asking &lt; WOZ
+        </button>
 
         {isCustomDom && (
           <div className="flex items-center gap-1">
