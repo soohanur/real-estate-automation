@@ -9,6 +9,7 @@ import {
   Building2,
   Database,
   Mail,
+  Settings,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -20,6 +21,7 @@ const items = [
   { href: "/scraper", label: "Funda Scraper", icon: Building2 },
   { href: "/data", label: "Global Data", icon: Database },
   { href: "/emails", label: "Emails", icon: Mail },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Sidebar({

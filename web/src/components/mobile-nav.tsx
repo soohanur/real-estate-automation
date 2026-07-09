@@ -15,6 +15,7 @@ import {
   Building2,
   Database,
   Mail,
+  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { conversationsApi } from "@/lib/api/conversations";
@@ -24,6 +25,7 @@ const TABS = [
   { href: "/scraper",   label: "Scraper", icon: Building2 },
   { href: "/data",      label: "Data",    icon: Database },
   { href: "/emails",    label: "Emails",  icon: Mail },
+  { href: "/settings",  label: "Settings", icon: Settings },
 ];
 
 export function MobileNav() {
