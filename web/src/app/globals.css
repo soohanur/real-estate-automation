@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* Theme is driven by data-theme on <html>, stamped before paint by the
+   inline script in layout.tsx. "system" is resolved to light/dark in JS,
+   so CSS only ever sees two states — and Tailwind's `dark:` variant
+   works. (It never did under the old prefers-color-scheme media query,
+   which sets no class/attribute for Tailwind to key on.) */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -32,7 +39,9 @@
   --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
+/* Light is the base. Dark overrides via [data-theme="dark"]. */
 :root {
+  color-scheme: light;
   --background: #f3f5f9;
   --surface: #ffffff;
   --surface-2: #f1f5f9;
@@ -40,23 +49,26 @@
   --border: #e6ebf2;
   --muted: #f0f4f9;
   --muted-foreground: #5a6473;
+  /* Brand tint used for active/selected rows — theme-aware so it never
+     renders as a white slab on dark (see conversation-list). */
+  --brand-tint: color-mix(in srgb, var(--color-brand-500) 12%, transparent);
   /* Glass overlay used by translucent nav surfaces. */
   --glass-bg: rgba(255, 255, 255, 0.72);
   --glass-border: rgba(255, 255, 255, 0.50);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #07111f;
-    --surface: #0e1a2c;
-    --surface-2: #0a1426;
-    --foreground: #e7ecf3;
-    --border: #1c2a44;
-    --muted: #0f1b30;
-    --muted-foreground: #93a1b6;
-    --glass-bg: rgba(14, 26, 44, 0.62);
-    --glass-border: rgba(255, 255, 255, 0.08);
-  }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #07111f;
+  --surface: #0e1a2c;
+  --surface-2: #0a1426;
+  --foreground: #e7ecf3;
+  --border: #1c2a44;
+  --muted: #0f1b30;
+  --muted-foreground: #93a1b6;
+  --brand-tint: color-mix(in srgb, var(--color-brand-500) 18%, transparent);
+  --glass-bg: rgba(14, 26, 44, 0.62);
+  --glass-border: rgba(255, 255, 255, 0.08);
 }
 
 html,

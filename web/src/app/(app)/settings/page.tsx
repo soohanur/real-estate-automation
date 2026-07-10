@@ -1,10 +1,21 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, AlertCircle, Mail, RefreshCw, Inbox, Send } from "lucide-react";
+import {
+  CheckCircle2,
+  AlertCircle,
+  Mail,
+  RefreshCw,
+  Inbox,
+  Send,
+  Monitor,
+  Sun,
+  Moon,
+} from "lucide-react";
 import { emailsApi } from "@/lib/api/emails";
 import { PageContainer } from "@/components/page-container";
-import { formatDate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
+import { useTheme, type Theme } from "@/lib/theme";
 
 export default function SettingsPage() {
   const { data: gmail, isLoading } = useQuery({
@@ -93,7 +104,75 @@ export default function SettingsPage() {
           </p>
         )}
       </div>
+
+      <ThemeCard />
     </PageContainer>
+  );
+}
+
+const THEME_OPTIONS: { value: Theme; label: string; icon: React.ReactNode; hint: string }[] = [
+  { value: "system", label: "System", icon: <Monitor className="h-4 w-4" />, hint: "Follow your OS setting" },
+  { value: "light", label: "Light", icon: <Sun className="h-4 w-4" />, hint: "Always light" },
+  { value: "dark", label: "Dark", icon: <Moon className="h-4 w-4" />, hint: "Always dark" },
+];
+
+function ThemeCard() {
+  const { theme, resolved, setTheme } = useTheme();
+
+  return (
+    <div className="card mt-4 p-5 md:p-6">
+      <div className="flex items-start gap-3">
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--surface-2)]">
+          {resolved === "dark" ? (
+            <Moon className="h-5 w-5 text-[var(--color-brand-600)]" />
+          ) : (
+            <Sun className="h-5 w-5 text-[var(--color-brand-600)]" />
+          )}
+        </div>
+        <div>
+          <h2 className="text-base font-semibold">Appearance</h2>
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Currently showing the <b>{resolved}</b> theme.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        {THEME_OPTIONS.map((opt) => {
+          const active = theme === opt.value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setTheme(opt.value)}
+              aria-pressed={active}
+              className={cn(
+                "flex items-start gap-3 rounded-xl border p-3 text-left transition-colors",
+                active
+                  ? "border-[var(--color-brand-500)] bg-[var(--brand-tint)]"
+                  : "border-[var(--border)] bg-[var(--surface-2)] hover:bg-[var(--muted)]",
+              )}
+            >
+              <div
+                className={cn(
+                  "mt-0.5",
+                  active ? "text-[var(--color-brand-600)]" : "text-[var(--muted-foreground)]",
+                )}
+              >
+                {opt.icon}
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 text-sm font-medium">
+                  {opt.label}
+                  {active && <CheckCircle2 className="h-4 w-4 text-[var(--color-brand-600)]" />}
+                </div>
+                <p className="text-xs text-[var(--muted-foreground)]">{opt.hint}</p>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

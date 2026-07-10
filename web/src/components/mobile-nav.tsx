@@ -61,7 +61,7 @@ export function MobileNav() {
                 <span
                   className={cn(
                     "relative grid h-9 w-12 place-items-center rounded-2xl",
-                    active && "bg-[var(--color-brand-50)]",
+                    active && "bg-[var(--brand-tint)]",
                   )}
                 >
                   <Icon className="h-5 w-5" />

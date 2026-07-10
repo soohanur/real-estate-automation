@@ -59,9 +59,7 @@ export function ConversationList({
                 className="flex w-full items-center gap-3 border-b border-[var(--border)] border-l-2 px-3 py-3 text-left transition-colors hover:bg-[var(--muted)]"
                 style={{
                   borderLeftColor: active ? "var(--color-brand-500)" : "transparent",
-                  backgroundColor: active
-                    ? "color-mix(in srgb, var(--color-brand-500) 16%, transparent)"
-                    : undefined,
+                  backgroundColor: active ? "var(--brand-tint)" : undefined,
                 }}
               >
                 <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--surface-2)] text-sm font-semibold text-[var(--color-brand-700)]">
