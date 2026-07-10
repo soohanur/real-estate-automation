@@ -9,9 +9,9 @@ export type ResolvedTheme = "light" | "dark";
 
 export const THEME_KEY = "theme";
 
-/** Default when the user has never chosen. Deliberately NOT "system" —
- *  auto-following the OS stays off until the light theme is signed off. */
-export const DEFAULT_THEME: Theme = "dark";
+/** Default when the user has never chosen: follow the OS. (Light theme has
+ *  been signed off, so system auto-pick is enabled.) */
+export const DEFAULT_THEME: Theme = "system";
 
 /** Runs in <head> before first paint, so the page never flashes the wrong
  *  theme. Dependency-free; must not throw when storage is unavailable. */

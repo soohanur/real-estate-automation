@@ -22,6 +22,7 @@ from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
+from ..core.serializers import UtcDateTime
 from ..db.database import get_db
 from ..db.models import EmailAttachment, EmailMessage, Property
 from ..services.email_service import deliver, require_gmail
@@ -47,7 +48,7 @@ class ConversationOut(BaseModel):
     agency_name: Optional[str] = None
     address: Optional[str] = None
     last_message_preview: str
-    last_message_at: Optional[datetime] = None
+    last_message_at: Optional[UtcDateTime] = None
     last_direction: str
     unread_count: int
     total_messages: int
@@ -69,8 +70,8 @@ class MessageOut(BaseModel):
     body_html: Optional[str] = None
     is_read: bool
     attachments: List[AttachmentOut] = []
-    sent_at: Optional[datetime] = None
-    created_at: Optional[datetime] = None
+    sent_at: Optional[UtcDateTime] = None
+    created_at: Optional[UtcDateTime] = None
 
 
 # ── Helpers ────────────────────────────────────────────────────

@@ -21,6 +21,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.database import get_db
+from ..core.serializers import UtcDateTime
 from ..db.models import EmailMessage, Property
 from ..services import email_sheet
 from ..services.email_service import deliver, require_gmail
@@ -53,8 +54,8 @@ class EmailOut(BaseModel):
     attachment_path: Optional[str] = None
     status: str
     error_message: Optional[str] = None
-    sent_at: Optional[datetime] = None
-    created_at: Optional[datetime] = None
+    sent_at: Optional[UtcDateTime] = None
+    created_at: Optional[UtcDateTime] = None
 
     class Config:
         from_attributes = True
