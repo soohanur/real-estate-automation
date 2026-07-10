@@ -188,7 +188,11 @@ body {
 /* ── Cards ───────────────────────────────────────────────────── */
 .card {
   border-radius: var(--radius-lg);
-  background: var(--surface);
+  /* background-color, NOT the `background` shorthand: the shorthand resets
+     background-image, which silently wiped `bg-gradient-to-*` utilities on
+     cards (the property page's "Your bid" tile rendered white-on-white in
+     light mode because its gradient never painted). */
+  background-color: var(--surface);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-ios-sm);
 }
