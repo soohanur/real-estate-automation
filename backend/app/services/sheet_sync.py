@@ -30,7 +30,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 from funda.src.config import config  # noqa: E402
 from funda.src.modules.sheets_writer import HEADERS  # noqa: E402
 
-from .bidding import compute_bidding, bidding_formula  # noqa: E402
+from .bidding import compute_bidding, bidding_formula, DISCOUNT_CAP  # noqa: E402
 
 _SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -137,6 +137,21 @@ def fetch_sheet_rows() -> List[Dict[str, Any]]:
 
 
 _DIGITS_RE = re.compile(r"\d+")
+
+
+def _to_int(v) -> Optional[int]:
+    """Parse a price-ish string ('€ 550.000', '550000') to a positive int,
+    or None if it has no digits."""
+    if v is None:
+        return None
+    digits = _DIGITS_RE.findall(str(v))
+    if not digits:
+        return None
+    try:
+        n = int("".join(digits))
+    except ValueError:
+        return None
+    return n if n > 0 else None
 
 
 def _default_bidding_from_asking(asking_price: Optional[str]) -> Optional[str]:
@@ -269,8 +284,25 @@ async def sync_properties(db: AsyncSession) -> Dict[str, int]:  # noqa: D401
         sheet_bidding_blank = "bidding_price" not in payload
         asking_present = bool(payload.get("asking_price"))
 
+        # Self-heal stale bids. Old scrapes left an uncapped 25%-off formula
+        # (=ROUND(F*0.75)) in the Sheet. Sync used to only fill *blank* cells,
+        # so those wrong values survived forever (asking − bidding up to
+        # €348k, far over the €76k cap). Now we ALSO rewrite any cell whose
+        # value breaks the cap: recompute the canonical value into the DB
+        # immediately and re-queue the capped formula for the Sheet. This is
+        # self-limiting — once a cell holds the capped formula its value can
+        # never violate the cap again, so no further rewrites happen.
+        _ask_i = _to_int(payload.get("asking_price"))
+        _bid_i = _to_int(payload.get("bidding_price"))
+        bidding_over_cap = (
+            _ask_i is not None and _bid_i is not None and (_ask_i - _bid_i) > DISCOUNT_CAP
+        )
+        if bidding_over_cap and _ask_i:
+            payload["bidding_price"] = str(compute_bidding(_ask_i))  # fix DB now
+        needs_formula = asking_present and (sheet_bidding_blank or bidding_over_cap)
+
         def _queue_formula_write():
-            if not (sheet_tab and row_index and asking_present and sheet_bidding_blank):
+            if not (sheet_tab and row_index and asking_present):
                 return
             formula = bidding_formula(_ASK_COL, row_index)
             pending_formula_writes.setdefault(sheet_tab, []).append((row_index, formula))
@@ -282,14 +314,14 @@ async def sync_properties(db: AsyncSession) -> Dict[str, int]:  # noqa: D401
                 continue
             for k, v in payload.items():
                 setattr(obj, k, v)
-            if sheet_bidding_blank and asking_present:
+            if needs_formula:
                 _queue_formula_write()
                 bidding_filled += 1
             updated += 1
         else:
             obj = Property(url=url, **payload)
             db.add(obj)
-            if sheet_bidding_blank and asking_present:
+            if needs_formula:
                 _queue_formula_write()
                 bidding_filled += 1
             inserted += 1
